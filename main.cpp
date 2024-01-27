@@ -102,7 +102,7 @@ std::string inet_checkip()
 	// libcurl を初期化
 	initialize_curl();
 
-	// カーリーハンドルを作成
+	// ハンドルを作成
 	curl = curl_easy_init();
 	if (curl) {
 		// URL を設定
@@ -118,7 +118,7 @@ std::string inet_checkip()
 			fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
 		}
 
-		// カーリーハンドルをクリーンアップ
+		// ハンドルをクリーンアップ
 		curl_easy_cleanup(curl);
 	}
 
@@ -236,8 +236,6 @@ int main(int argc, char **argv)
 		}
 		return {};
 	};
-	// map["name"] = "John";
-	// map["age"] = "42";
 	std::string result = st.generate(source, map);
 	puts(result.c_str());
 

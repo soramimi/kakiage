@@ -1,14 +1,37 @@
 
 #include "urlencode.h"
-#include "charvec.h"
 #include <cstdlib>
 #include <cstdio>
 #include <cctype>
 #include <cstring>
+#include <vector>
+
+
 #ifdef WIN32
 #pragma warning(disable:4996)
 #endif
 
+namespace {
+
+inline void vecprint(std::vector<char> *out, char c)
+{
+	out->push_back(c);
+}
+
+inline void vecprint(std::vector<char> *out, char const *s)
+{
+	out->insert(out->end(), s, s + strlen(s));
+}
+
+inline std::string_view to_string(std::vector<char> const &vec)
+{
+	if (!vec.empty()) {
+		return {vec.data(), vec.size()};
+	}
+	return {};
+}
+
+} // namespace
 
 static void url_encode_(char const *ptr, char const *end, std::vector<char> *out, bool utf8lazy)
 {
@@ -42,7 +65,7 @@ std::string url_encode(char const *str, char const *end, bool utf8lazy)
 
 	url_encode_(str, end, &out, utf8lazy);
 
-	return to_stdstr(out);
+	return (std::string)to_string(out);
 }
 
 std::string url_encode(char const *str, size_t len, bool utf8lazy)
@@ -80,7 +103,7 @@ std::string url_encode(std::string const &str, bool utf8lazy)
 	out.insert(out.end(), begin, ptr);
 	url_encode_(ptr, end, &out, utf8lazy);
 
-	return to_stdstr(out);
+	return (std::string)to_string(out);
 }
 
 static void url_decode_(char const *ptr, char const *end, std::vector<char> *out)
@@ -113,7 +136,7 @@ std::string url_decode(char const *str, char const *end)
 
 	url_decode_(str, end, &out);
 
-	return to_stdstr(out);
+	return (std::string)to_string(out);
 }
 
 std::string url_decode(char const *str, size_t len)
@@ -143,12 +166,11 @@ std::string url_decode(std::string const &str)
 		return str;
 	}
 
-
 	std::vector<char> out;
 	out.reserve(str.size() + 10);
 
 	out.insert(out.end(), begin, ptr);
 	url_decode_(ptr, end, &out);
 
-	return to_stdstr(out);
+	return (std::string)to_string(out);
 }

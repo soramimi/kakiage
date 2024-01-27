@@ -1,13 +1,36 @@
 
 #include "htmlencode.h"
-#include "charvec.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <vector>
+#include <string_view>
 
 #ifdef WIN32
 #pragma warning(disable:4996)
 #endif
+
+namespace {
+
+inline void vecprint(std::vector<char> *out, char c)
+{
+	out->push_back(c);
+}
+
+inline void vecprint(std::vector<char> *out, char const *s)
+{
+	out->insert(out->end(), s, s + strlen(s));
+}
+
+inline std::string_view to_string(std::vector<char> const &vec)
+{
+	if (!vec.empty()) {
+		return {vec.data(), vec.size()};
+	}
+	return {};
+}
+
+} // namespace
 
 /**
  * @brief html_encode_
@@ -90,7 +113,7 @@ std::string html_encode(char const *ptr, char const *end, bool utf8lazy)
 	std::vector<char> vec;
 	vec.reserve((end - ptr) * 2);
 	html_encode_(ptr, end, utf8lazy, &vec);
-	return to_stdstr(vec);
+	return (std::string)to_string(vec);
 }
 
 std::string html_decode(char const *ptr, char const *end)
@@ -98,7 +121,7 @@ std::string html_decode(char const *ptr, char const *end)
 	std::vector<char> vec;
 	vec.reserve((end - ptr) * 2);
 	html_decode_(ptr, end, &vec);
-	return to_stdstr(vec);
+	return (std::string)to_string(vec);
 }
 
 std::string html_encode(char const *ptr, size_t len, bool utf8lazy)
