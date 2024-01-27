@@ -227,7 +227,7 @@ int main(int argc, char **argv)
 	}
 
 	strtemplate st;
-	st.evaluate = [&](std::string const &name, std::string const &text, std::string const &arg)->std::string{
+	st.evaluator = [&](std::string const &name, std::string const &arg)->std::string{
 		if (name == "inet_resolve") {
 			return inet_resolve(arg);
 		}

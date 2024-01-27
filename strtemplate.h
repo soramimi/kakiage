@@ -10,9 +10,11 @@ class strtemplate {
 public:
 
 	std::vector<std::map<std::string, std::string> *> defines;
-	std::function<std::string (std::string const &, std::string const &, std::string const &)> evaluate;
 
-	std::string generate(const std::string &source, const std::map<std::string, std::string> &map);
+	std::function<std::string (std::string const &name, std::string const &arg)> evaluator;
+	std::function<std::string (std::string const &file)> includer;
+
+	std::string generate(const std::string &source, const std::map<std::string, std::string> &map, int include_depth = 0);
 
 };
 

@@ -1,20 +1,131 @@
-#include "charvec.h"
 #include "htmlencode.h"
 #include "strtemplate.h"
 #include "urlencode.h"
 #include <cstring>
 #include <numeric>
+#include <optional>
 #include <vector>
 
-static std::string trim(const std::string &s)
+namespace {
+
+void vecprint(std::vector<char> *out, std::string_view const &s)
+{
+	out->insert(out->end(), s.begin(), s.end());
+}
+
+std::string_view trimmed(const std::string_view &s)
 {
 	size_t i = 0;
 	size_t j = s.size();
-	char const *p = s.c_str();
-	while (i < j && isspace(p[i] & 0xff)) i++;
-	while (i < j && isspace(p[j - 1] & 0xff)) j--;
+	char const *p = s.data();
+	while (i < j && isspace((unsigned char)p[i])) i++;
+	while (i < j && isspace((unsigned char)p[j - 1])) j--;
 	return s.substr(i, j - i);
 }
+
+std::string_view to_string(std::vector<char> const &vec)
+{
+	if (!vec.empty()) {
+		return {vec.data(), vec.size()};
+	}
+	return {};
+}
+
+size_t find_any(const std::string_view &str, const char *chrs)
+{
+	size_t i = 0;
+	while (i < str.size()) {
+		if (strchr(chrs, str[i])) {
+			return i;
+		}
+		i++;
+	}
+	return std::string::npos;
+}
+
+struct split_opt_t {
+	unsigned char sep_ch = 0; // 区切り文字
+	char const *sep_any = nullptr; // 区切り文字の集合
+	std::function<bool(int c)> sep_fn; // 区切り文字の判定関数
+	bool keep_empty_lines = true; // 空行を保持するかどうか
+	bool trim_spaces = true; // 空白文字を削除するかどうか
+};
+
+/**
+ * @brief 文字列を分割する
+ * @param begin
+ * @param end
+ * @param opt
+ */
+static inline std::vector<std::string_view> split_internal(char const *begin, char const *end, split_opt_t const &opt)
+{
+	std::vector<std::string_view> out;
+	out.clear();
+	char const *ptr = begin;
+	while (isspace(*ptr)) {
+		ptr++;
+	}
+	char const *left = ptr;
+	while (true) {
+		int c = -1;
+		if (ptr < end) {
+			c = *ptr & 0xff;
+		}
+		auto is_separator = [&](int c){
+			if (opt.sep_ch && c == opt.sep_ch) return true;
+			if (opt.sep_fn && opt.sep_fn(c)) return true;
+			if (opt.sep_any && strchr(opt.sep_any, c)) return true;
+			return false;
+		};
+		if (is_separator(c) || c < 0) {
+			std::basic_string_view<char> line(left, ptr - left);
+			if (opt.trim_spaces) {
+				line = trimmed(line);
+			}
+			if (opt.keep_empty_lines || !line.empty()) {
+				out.push_back(line);
+			}
+			if (c < 0) break;
+			ptr++;
+			left = ptr;
+		} else {
+			ptr++;
+		}
+	}
+	return out;
+}
+
+/**
+ * @brief 文字列を分割する
+ * @param begin
+ * @param end
+ * @param out
+ *
+ * 文字列を指定した文字で分割する。
+ */
+std::vector<std::string_view> split_words(char const *begin, char const *end, char sep)
+{
+	split_opt_t opt;
+	opt.sep_ch = sep;
+	return split_internal(begin, end, opt);
+}
+
+/**
+ * @brief 文字列を分割する
+ * @param str
+ * @param c
+ * @param out
+ *
+ * 文字列を空白文字で分割する。
+ */
+std::vector<std::string_view> split_words(std::string_view const &str, char sep)
+{
+	char const *begin = str.data();
+	char const *end = begin + str.size();
+	return split_words(begin, end, sep);
+}
+
+} // namespace
 
 /**
  * @brief ページを生成する（テンプレートエンジン）
@@ -22,7 +133,7 @@ static std::string trim(const std::string &s)
  * @param map 置換マップ
  * @return ページテキスト
  */
-std::string strtemplate::generate(const std::string &source, const std::map<std::string, std::string> &map)
+std::string strtemplate::generate(const std::string &source, const std::map<std::string, std::string> &map, int include_depth)
 {
 	std::map<std::string, std::string> macro;
 	defines.push_back(&macro);
@@ -30,7 +141,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 	std::vector<char> out;
 	out.reserve(4096);
 
-	int comment = 0;
+	int comment_depth = 0;
 	char const *begin = source.c_str();
 	char const *end = begin + source.size();
 	char const *ptr = begin;
@@ -40,28 +151,28 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 		emission = std::accumulate(condition_stack.begin(), condition_stack.end(), 0) == condition_stack.size();
 	};
 	auto outc = [&](char c){
-		if (emission && comment == 0) {
+		if (emission && comment_depth == 0) {
 			out.push_back(c);
 		}
 	};
-	auto outs = [&](std::string const &s){
-		if (emission && comment == 0) {
+	auto outs = [&](std::string_view const &s){
+		if (emission && comment_depth == 0) {
 			vecprint(&out, s);
 		}
 	};
-	auto FindMacro = [&](std::string const &name, std::string *out)->bool{
+	auto FindMacro = [&](std::string const &name)->std::optional<std::string>{
 		size_t i = defines.size();
 		while (i > 0) {
 			i--;
 			auto it = defines[i]->find(name);
 			if (it != defines[i]->end()) {
-				*out = it->second;
-				return true;
+				return it->second;
 			}
 		}
-		return false;
+		return std::nullopt;
 	};
 	while (1) {
+		comment_depth = 0;
 		int c = 0;
 		if (ptr < end) {
 			c = (unsigned char)*ptr;
@@ -76,58 +187,72 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 			}
 		};
 		if (ptr + 4 < end && ptr[0] == '{' && ptr[1] == '{' && ptr[2] == '.' && ptr[3] == '}' && ptr[4] == '}') {
+			// {{.}}
 			ptr += 5;
 			END();
 		} else if (c == '{' && ptr + 2 < end && ptr[1] == '{' && (ptr[2] == '.' || ptr[2] == ';')) {
-			ptr += 3;
-			int depth = 0;
-			if (ptr[2] == ';') {
-				comment++;
+			// {{. or {{;
+			ptr += 2;
+			if (*ptr == ';') { // {{;comment}}
+				comment_depth = 1;
 			}
+			ptr++;
 			std::string key;
 			std::string value;
 			char const *p = ptr;
+			// parse {{.foo}} or {{.foo.bar}} or {{.foo(bar)}}
 			while (p + 1 < end) {
 				c = (unsigned char)*p;
-				if (p + 2 < end && c == '{' && p[1] == '{' && p[2] == '.') {
-					depth++;
-					if (comment > 0) {
-						comment++;
+				if (p + 1 < end && c == '{' && p[1] == '{') { // {{
+					if (comment_depth > 0) { // inclease comment depth
+						comment_depth++;
 					}
-					p += 3;
-				} else if (c == '}' && p[1] == '}') {
-					if (depth > 0) {
-						depth--;
-						if (comment > 0) {
-							comment--;
-						}
-						p += 2;
+					p += 2;
+				} else if (c == '}' && p[1] == '}') { // }}
+					if (isspace((unsigned char)*ptr)) {
+						key = value = {};
 					} else {
-						if (isspace((unsigned char)*ptr)) {
-							key = value = {};
-						} else {
-							value.assign(ptr, p);
-							size_t i = value.find('.', 1);
-							if (i != std::string::npos && i > 0) {
+						value = {ptr, p - ptr};
+						size_t i = find_any(value, ".(");
+						if (i != std::string::npos) {
+							if (value[i] == '.') { // {{.foo.bar}}
 								key = value.substr(0, i);
 								value = value.substr(i + 1);
-							} else if (value.c_str()[0] == '.') {
-								std::swap(value, key);
+							} else if (value[i] == '(') { // {{.foo(bar)}}
+								size_t j = value.size();
+								if (value[j - 1] == ')') {
+									j--;
+									key = value.substr(0, i++);
+									value = value.substr(i, j - i);
+								}
+							} else {
+								fprintf(stderr, "syntax error: %s\n", value.c_str());
 							}
+						} else {
+							// keep key empty
 						}
-						p += 2;
+					}
+					p += 2;
+					if (comment_depth < 2) {
 						break;
 					}
+					comment_depth--;
+				} else {
+					p++;
 				}
-				p++;
 			}
-			if (key == "define") {
-				size_t i;
-				for (i = 0; i < value.size(); i++) {
-					if (isspace((unsigned char)value.c_str()[i])) break;
+			auto iskey = [&key](char const *s)->bool{
+				int i;
+				for (i = 0; s[i]; i++) {
+					if (i >= key.size()) return false;
+					if (key[i] != s[i]) return false;
 				}
+				return i == key.size();
+			};
+			if (iskey("define")) { // {{.define.foo=bar}}
+				size_t i = value.find('=');
 				std::string name = value.substr(0, i);
-				value = trim(value.substr(i));
+				value = trimmed(std::string_view(value).substr(i + 1));
 				if (!name.empty()) {
 					if (value.empty()) {
 						auto it = macro.find(name);
@@ -137,8 +262,10 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					} else {
 						macro[name] = value;
 					}
+				} else {
+					fprintf(stderr, "define name is empty\n");
 				}
-			} else if (key == "put") {
+			} else if (iskey("put")) { // {{.put.foo}}
 				auto p = value.find('(');
 				std::string arg;
 				if (p != std::string::npos) {
@@ -149,28 +276,54 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					}
 					value = value.substr(0, p);
 				}
-#if 0
-				auto it = macro.find(value);
-				if (it != macro.end()) {
-					std::string s = generate(it->second, map, eval);
-					outs(s);
-				} else {
-					fprintf(stderr, "undefined macro '%s'\n", value.c_str());
-				}
-#else
-				if (evaluate) {
-					std::string text;
-					FindMacro(value, &text);
-					std::string t = evaluate(value, text, arg);
-					std::string u = generate(t, map);
+				auto text = FindMacro(value);
+				if (text) {
+					std::string u = generate(*text, map);
 					outs(u);
+				} else {
+					if (evaluator) {
+						std::string t = evaluator(value, arg);
+						std::string u = generate(t, map);
+						outs(u);
+					} else {
+						outs(value);
+					}
 				}
-#endif
+			} else if (iskey("include")) { // {{.include(foo)}}
+				if (includer) {
+					if (include_depth < 10) { // limit includer depth
+						std::string t = includer(value); // load template
+						std::string u = generate(t, map); // apply template
+						outs(u);
+					} else {
+						fprintf(stderr, "include depth too deep\n");
+					}
+				} else {
+					fprintf(stderr, "include function is not defined\n");
+				}
+			} else if (iskey("jsx")) {
+				if (includer) {
+					if (include_depth < 10) { // limit includer depth
+						auto args = split_words(value, ',');
+						if (args.size() >= 2) {
+							auto name = args[0];
+							auto el = args[1];
+							std::string t = includer((std::string)name); // load template
+							std::string u = generate(t, map); // apply template
+							std::string s = "let " + (std::string)el + " = (" + (std::string)trimmed(u) + ')';
+							outs(s);
+						}
+					} else {
+						fprintf(stderr, "include depth too deep\n");
+					}
+				} else {
+					fprintf(stderr, "include function is not defined\n");
+				}
 			} else {
-				if (!value.empty()) {
+				if (!value.empty()) { // {{.foo}}
 					auto it = map.find(value);
 					if (it != map.end()) {
-						value = it->second;
+						value = it->second; // replace value
 					} else {
 						if (emission) {
 							fprintf(stderr, "undefined value '%s'\n", value.c_str());
@@ -179,31 +332,31 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					}
 				}
 				if (key.empty()) {
-					outs(html_encode(value, true));
-				} else if (key == "raw") {
-					outs(value);
-				} else if (key == "url") {
-					outs(url_encode(value, true));
-				} else if (key == "if") {
-					bool f = std::atoi(value.c_str()) != 0;
+					outs(html_encode(value, true)); // output escaped value
+				} else if (iskey("raw")) { // {{.raw.foo}}
+					outs(value); // output raw value
+				} else if (iskey("url")) { // {{.url.foo}}
+					outs(url_encode(value, true)); // output url encoded value
+				} else if (iskey("if")) { // {{.if.foo}}
+					bool f = atoi(value.c_str()) != 0;
 					condition_stack.push_back(f);
 					UpdateEmission();
-				} else if (key == "ifn") {
-					bool f = std::atoi(value.c_str()) == 0;
+				} else if (iskey("ifn")) { // {{.ifn.foo}} // if not
+					bool f = atoi(value.c_str()) == 0;
 					condition_stack.push_back(f);
 					UpdateEmission();
-				} else if (key == "else") {
+				} else if (iskey("else")) { // {{.else}}
 					emission = !emission;
-				} else if (key == "end") {
+				} else if (iskey("end")) { // {{.end}}
 					END();
 				}
 			}
 			ptr = p;
-		} else if (comment == 0 && c == '&' && ptr + 1 < end && strchr("&.{}", ptr[1])) {
+		} else if (comment_depth == 0 && c == '&' && ptr + 1 < end && strchr("&.{}", ptr[1])) { // &. or &{ or &} or &&
 			ptr++;
 			char const *p = ptr;
 			while (p < end) {
-				if (*p == ';') {
+				if (*p == ';') { // &c;
 					std::string s(ptr, p);
 					outs(s);
 					ptr = p + 1;
@@ -225,5 +378,5 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 
 	defines.pop_back();
 
-	return to_stdstr(out);
+	return (std::string)to_string(out);
 }
