@@ -8,6 +8,7 @@ SOURCES := \
 	htmlencode.cpp \
 	strtemplate.cpp \
 	urlencode.cpp \
+	UnixProcess.cpp \
 	main.cpp
 
 OBJECTS := $(SOURCES:%.cpp=%.o)
