@@ -224,18 +224,27 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 			}
 		};
 		bool envflag = false;
-		if (ptr + 4 < end && ptr[0] == '{' && ptr[1] == '{' && ptr[2] == '.' && ptr[3] == '}' && ptr[4] == '}') {
-			// {{.}}
+		char leader = 0;
+		if (c == '{' && ptr + 2 < end && ptr[1] == '{') {
+			leader = ptr[2];
+			if (leader == '.' || leader == '#' || leader == ';') {
+				// {{. or {{# or {{;
+			} else {
+				leader = 0;
+			}
+		}
+		if (ptr + 4 < end && (leader != 0 && leader != ';') && ptr[3] == '}' && ptr[4] == '}') {
+			// {{.}} or {{#}}
 			ptr += 5;
 			EatNL();
 			END();
-		} else if (c == '{' && ptr + 2 < end && ptr[1] == '{' && (ptr[2] == '.' || ptr[2] == ';')) {
-			// {{. or {{;
-			ptr += 2;
-			if (*ptr == ';' || (ptr + 1 < end && *ptr == '.' && ptr[1] == ';')) { // {{;comment}} or {{.;comment}}
+			continue;
+		}
+		if (leader != 0) { // valid leader or comment
+			if (leader == ';' || (ptr + 3 < end && leader != 0 && ptr[3] == ';')) { // {{; or {{.; or {{#; is comment
 				comment_depth = 1;
 			}
-			ptr++;
+			ptr += 3;
 
 			std::string key;
 			std::string value;
