@@ -8,6 +8,7 @@
 
 class strtemplate {
 public:
+	bool html_mode = true;
 
 	std::vector<std::map<std::string, std::string> *> defines;
 

@@ -1,11 +1,10 @@
 
-// ted: Template EDitor
-
 #include "strtemplate.h"
 #include <map>
 #include <stdio.h>
 #include <cstring>
 #include <string_view>
+#include <optional>
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -24,6 +23,13 @@
 
 #include <curl/curl.h>
 
+#define PROGRAM_NAME "kakiage"
+
+#define VERSION "0.0.0"
+
+std::optional<std::string> inet_checkip_cache;
+std::map<std::string, std::string> inet_resolve_cache;
+
 /**
  * @brief inet_resolve
  * @param name
@@ -31,16 +37,20 @@
  */
 std::string inet_resolve(std::string const &name)
 {
-	struct addrinfo hints, *res;
-	struct in_addr addr;
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_family = AF_INET;
-	auto err = getaddrinfo(name.c_str(), nullptr, &hints, &res);
-	if (err) return {};
-	addr.s_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr;
-	freeaddrinfo(res);
-	return inet_ntoa(addr);
+	auto it = inet_resolve_cache.find(name);
+	if (it == inet_resolve_cache.end()) {
+		struct addrinfo hints, *res;
+		struct in_addr addr;
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_socktype = SOCK_STREAM;
+		hints.ai_family = AF_INET;
+		auto err = getaddrinfo(name.c_str(), nullptr, &hints, &res);
+		if (err) return {};
+		addr.s_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr;
+		freeaddrinfo(res);
+		it = inet_resolve_cache.insert(inet_resolve_cache.end(), std::make_pair(name, inet_ntoa(addr)));
+	}
+	return it->second;
 }
 
 /**
@@ -94,40 +104,43 @@ void finalize_curl()
  */
 std::string inet_checkip()
 {
-	std::vector<char> buffer;
+	if (!inet_checkip_cache) {
+		std::vector<char> buffer;
 
-	CURL *curl;
-	CURLcode res;
+		CURL *curl;
+		CURLcode res;
 
-	// libcurl を初期化
-	initialize_curl();
+		// libcurl を初期化
+		initialize_curl();
 
-	// ハンドルを作成
-	curl = curl_easy_init();
-	if (curl) {
-		// URL を設定
-		curl_easy_setopt(curl, CURLOPT_URL, "http://checkip.amazonaws.com");
+		// ハンドルを作成
+		curl = curl_easy_init();
+		if (curl) {
+			// URL を設定
+			curl_easy_setopt(curl, CURLOPT_URL, "http://checkip.amazonaws.com");
 
-		// データの受信先を設定
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _write_callback);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buffer);
+			// データの受信先を設定
+			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _write_callback);
+			curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buffer);
 
-		// リクエストを実行し、エラーがあれば処理
-		res = curl_easy_perform(curl);
-		if (res != CURLE_OK) {
-			fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+			// リクエストを実行し、エラーがあれば処理
+			res = curl_easy_perform(curl);
+			if (res != CURLE_OK) {
+				fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+			}
+
+			// ハンドルをクリーンアップ
+			curl_easy_cleanup(curl);
 		}
 
-		// ハンドルをクリーンアップ
-		curl_easy_cleanup(curl);
+		// 受信したデータを文字列に変換
+		char const *begin = buffer.data();
+		char const *end = begin + buffer.size();
+		while (begin < end && isspace((unsigned char)*begin)) begin++;
+		while (begin < end && isspace((unsigned char)end[-1])) end--;
+		inet_checkip_cache = std::string(begin, end);
 	}
-
-	// 受信したデータを文字列に変換
-	char const *begin = buffer.data();
-	char const *end = begin + buffer.size();
-	while (begin < end && isspace((unsigned char)*begin)) begin++;
-	while (begin < end && isspace((unsigned char)end[-1])) end--;
-	return std::string(begin, end);
+	return *inet_checkip_cache;
 }
 
 /**
@@ -154,29 +167,50 @@ std::string readfile(char const *path)
 //
 int main(int argc, char **argv)
 {
-	std::string source_path;
+	std::string input_path;
+	std::string output_path;
 	std::string template_path;
+	bool help = false;
 	int i = 1;
 	while (i < argc) {
 		char const *arg = argv[i++];
 		if (arg[0] == '-') {
+			if (strcmp(arg, "-h") == 0 || strcmp(arg, "--help") == 0) {
+				help = true;
+			}
 			if (strcmp(arg, "-t") == 0) {
 				if (i < argc) {
 					template_path = argv[i++];
 				} else {
 					fprintf(stderr, "Too few arguments\n");
 				}
+			} else if (strcmp(arg, "-o") == 0) {
+				if (i < argc) {
+					output_path = argv[i++];
+				} else {
+					fprintf(stderr, "Too few arguments\n");
+				}
+			} else {
+				fprintf(stderr, "Unknown option: %s\n", arg);
 			}
 		} else {
-			if (source_path.empty()) {
-				source_path = arg;
+			if (input_path.empty()) {
+				input_path = arg;
 			} else {
 				fprintf(stderr, "Too many arguments\n");
 			}
 		}
 	}
+	if (help || input_path.empty() || template_path.empty()) {
+		fprintf(stderr, "%s %s\n", PROGRAM_NAME, VERSION);
+		fprintf(stderr, "Usage: %s [options] <input file>\n", PROGRAM_NAME);
+		fprintf(stderr, "Options:\n");
+		fprintf(stderr, "  -t <template file>\n");
+		fprintf(stderr, "  -o <output file>\n");
+		return 0;
+	}
 
-	std::string source = readfile(source_path.c_str());
+	std::string source = readfile(input_path.c_str());
 	std::string templ = readfile(template_path.c_str());
 	std::map<std::string, std::string> map;
 	{
@@ -227,6 +261,7 @@ int main(int argc, char **argv)
 	}
 
 	strtemplate st;
+	st.html_mode = false;
 	st.evaluator = [&](std::string const &name, std::string const &arg)->std::string{
 		if (name == "inet_resolve") {
 			return inet_resolve(arg);
@@ -237,7 +272,19 @@ int main(int argc, char **argv)
 		return {};
 	};
 	std::string result = st.generate(source, map);
-	puts(result.c_str());
+
+	FILE *fp;
+	if (!output_path.empty()) {
+		fp = fopen(output_path.c_str(), "w");
+		if (!fp) {
+			fprintf(stderr, "Failed to open output file: %s\n", output_path.c_str());
+			return 1;
+		}
+		fwrite(result.data(), 1, result.size(), fp);
+		fclose(fp);
+	} else {
+		fwrite(result.data(), 1, result.size(), stdout);
+	}
 
 	finalize_curl();
 

@@ -193,7 +193,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 		} else if (c == '{' && ptr + 2 < end && ptr[1] == '{' && (ptr[2] == '.' || ptr[2] == ';')) {
 			// {{. or {{;
 			ptr += 2;
-			if (*ptr == ';') { // {{;comment}}
+			if (*ptr == ';' || (ptr + 1 < end && *ptr == '.' && ptr[1] == ';')) { // {{;comment}} or {{.;comment}}
 				comment_depth = 1;
 			}
 			ptr++;
@@ -278,6 +278,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				}
 				auto text = FindMacro(value);
 				if (text) {
+					(void)arg;
 					std::string u = generate(*text, map);
 					outs(u);
 				} else {
@@ -332,7 +333,12 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					}
 				}
 				if (key.empty()) {
-					outs(html_encode(value, true)); // output escaped value
+					if (html_mode) { // if html mode, output html encoded value
+						value = html_encode(value, true);
+					}
+					outs(value);
+				} else if (iskey("html")) { // {{.html.foo}}
+					outs(html_encode(value, true)); // output html encoded value
 				} else if (iskey("raw")) { // {{.raw.foo}}
 					outs(value); // output raw value
 				} else if (iskey("url")) { // {{.url.foo}}
