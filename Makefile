@@ -24,3 +24,6 @@ $(TARGET): $(OBJECTS)
 clean:
 	-rm $(TARGET)
 	-rm *.o
+
+install: $(TARGET)
+	install -m 755 $(TARGET) /usr/local/bin/$(TARGET)
