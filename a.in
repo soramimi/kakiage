@@ -2,3 +2,4 @@ name = {{.name}}
 age = {{.age}}
 {{.put.inet_resolve(home.soramimi.jp)}}
 {{.put.inet_checkip}}
+{{.`uname -a`}}

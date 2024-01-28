@@ -18,3 +18,12 @@ HEADERS += \
 	htmlencode.h \
 	strtemplate.h \
 	urlencode.h
+
+win32 {
+	SOURCES += Win32Process.cpp
+	HEADERS += Win32Process.h
+}
+!win32 {
+	SOURCES += UnixProcess.cpp
+	HEADERS += UnixProcess.h
+}

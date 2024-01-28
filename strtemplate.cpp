@@ -6,6 +6,13 @@
 #include <optional>
 #include <vector>
 
+
+
+#ifdef _WIN32
+#else
+#include "UnixProcess.h"
+#endif
+
 namespace {
 
 void vecprint(std::vector<char> *out, std::string_view const &s)
@@ -125,6 +132,16 @@ std::vector<std::string_view> split_words(std::string_view const &str, char sep)
 	return split_words(begin, end, sep);
 }
 
+std::optional<std::string> run(std::string const &command)
+{
+	UnixProcess proc;
+	proc.start(command, false);
+	if (proc.wait() == 0) {
+		return proc.outstring();
+	}
+	return std::nullopt;
+}
+
 } // namespace
 
 /**
@@ -142,21 +159,24 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 	out.reserve(4096);
 
 	int comment_depth = 0;
+
 	char const *begin = source.c_str();
 	char const *end = begin + source.size();
 	char const *ptr = begin;
-	std::vector<char> condition_stack;
-	bool emission = true;
-	auto UpdateEmission = [&](){
-		emission = std::accumulate(condition_stack.begin(), condition_stack.end(), 0) == condition_stack.size();
+
+	std::vector<char> condition_stack; // すべてtrueなら条件分岐が真として処理する。格納される値は 0 か 1 のみ。
+	bool condition = true;
+
+	auto UpdateCondition = [&](){
+		condition = std::accumulate(condition_stack.begin(), condition_stack.end(), 0) == condition_stack.size();
 	};
 	auto outc = [&](char c){
-		if (emission && comment_depth == 0) {
+		if (condition && comment_depth == 0) {
 			out.push_back(c);
 		}
 	};
 	auto outs = [&](std::string_view const &s){
-		if (emission && comment_depth == 0) {
+		if (condition && comment_depth == 0) {
 			vecprint(&out, s);
 		}
 	};
@@ -171,6 +191,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 		}
 		return std::nullopt;
 	};
+
 	while (1) {
 		comment_depth = 0;
 		int c = 0;
@@ -183,7 +204,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 		auto END = [&](){
 			if (!condition_stack.empty()) {
 				condition_stack.pop_back();
-				UpdateEmission();
+				UpdateCondition();
 			}
 		};
 		if (ptr + 4 < end && ptr[0] == '{' && ptr[1] == '{' && ptr[2] == '.' && ptr[3] == '}' && ptr[4] == '}') {
@@ -213,18 +234,16 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 						key = value = {};
 					} else {
 						value = {ptr, p - ptr};
-						size_t i = find_any(value, ".(");
+						size_t i = find_any(value, ".(<");
 						if (i != std::string::npos) {
-							if (value[i] == '.') { // {{.foo.bar}}
+							int left = value[i];
+							int right = value[value.size() - 1];
+							if (left == '.') { // {{.foo.bar}}
 								key = value.substr(0, i);
 								value = value.substr(i + 1);
-							} else if (value[i] == '(') { // {{.foo(bar)}}
-								size_t j = value.size();
-								if (value[j - 1] == ')') {
-									j--;
-									key = value.substr(0, i++);
-									value = value.substr(i, j - i);
-								}
+							} else if ((left == '(' && right == ')') || (left == '<' && right == '>')) { // {{.foo(bar)}}
+								key = value.substr(0, i);
+								value = value.substr(i);
 							} else {
 								fprintf(stderr, "syntax error: %s\n", value.c_str());
 							}
@@ -249,7 +268,54 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				}
 				return i == key.size();
 			};
-			if (iskey("define")) { // {{.define.foo=bar}}
+			auto Output = [&](std::string const &v){
+				if (key.empty()) { // {{.foo}}
+					if (is_html_mode()) { // if html mode, output html encoded value
+						html_encode(v, true);
+					}
+					outs(v);
+					return true;
+				}
+				if (iskey("html")) { // {{.html.foo}}
+					outs(html_encode(v, true)); // output html encoded value
+					return true;
+				}
+				if (iskey("raw")) { // {{.raw.foo}}
+					outs(v); // output raw value
+					return true;
+				}
+				if (iskey("url")) { // {{.url.foo}}
+					outs(url_encode(v, true)); // output url encoded value
+					return true;
+				}
+				return false;
+			};
+			if (value.size() > 2 && value[0] == '(' && value[value.size() - 1] == ')') {
+				value = value.substr(1, value.size() - 2);
+			}
+			if (value.size() > 2 && value[0] == '<' && value[value.size() - 1] == '>') {
+				value = value.substr(1, value.size() - 2);
+				if (includer) {
+					if (include_depth < 10) { // limit includer depth
+						std::string t = includer(value); // load template
+						std::string u = generate(t, map); // apply template
+						outs(trimmed(u));
+					} else {
+						fprintf(stderr, "include depth too deep\n");
+					}
+				} else {
+					fprintf(stderr, "include function is not defined\n");
+				}
+			} else if (value.size() > 2 && value[0] == '`' && value[value.size() - 1] == '`') {
+				value = value.substr(1, value.size() - 2);
+				auto r = run(value);
+				if (r) {
+					value = *r;
+					value = trimmed(value);
+				}
+				Output(value);
+
+			} else if (iskey("define")) { // {{.define.foo=bar}}
 				size_t i = value.find('=');
 				std::string name = value.substr(0, i);
 				value = trimmed(std::string_view(value).substr(i + 1));
@@ -282,12 +348,15 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					std::string u = generate(*text, map);
 					outs(u);
 				} else {
+					std::optional<std::string> t;
 					if (evaluator) {
-						std::string t = evaluator(value, arg);
-						std::string u = generate(t, map);
+						t = evaluator(value, arg);
+					}
+					if (t) {
+						std::string u = generate(*t, map);
 						outs(u);
 					} else {
-						outs(value);
+						fprintf(stderr, "undefined macro '%s'\n", value.c_str());
 					}
 				}
 			} else if (iskey("include")) { // {{.include(foo)}}
@@ -295,7 +364,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					if (include_depth < 10) { // limit includer depth
 						std::string t = includer(value); // load template
 						std::string u = generate(t, map); // apply template
-						outs(u);
+						outs(trimmed(u));
 					} else {
 						fprintf(stderr, "include depth too deep\n");
 					}
@@ -321,38 +390,29 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					fprintf(stderr, "include function is not defined\n");
 				}
 			} else {
-				if (!value.empty()) { // {{.foo}}
+				if (!value.empty()) { // 値を置換
 					auto it = map.find(value);
 					if (it != map.end()) {
 						value = it->second; // replace value
 					} else {
-						if (emission) {
+						if (condition && comment_depth == 0) {
 							fprintf(stderr, "undefined value '%s'\n", value.c_str());
 						}
 						value = {};
 					}
 				}
-				if (key.empty()) {
-					if (html_mode) { // if html mode, output html encoded value
-						value = html_encode(value, true);
-					}
-					outs(value);
-				} else if (iskey("html")) { // {{.html.foo}}
-					outs(html_encode(value, true)); // output html encoded value
-				} else if (iskey("raw")) { // {{.raw.foo}}
-					outs(value); // output raw value
-				} else if (iskey("url")) { // {{.url.foo}}
-					outs(url_encode(value, true)); // output url encoded value
+				if (Output(value)) {
+					// ok
 				} else if (iskey("if")) { // {{.if.foo}}
 					bool f = atoi(value.c_str()) != 0;
 					condition_stack.push_back(f);
-					UpdateEmission();
+					UpdateCondition();
 				} else if (iskey("ifn")) { // {{.ifn.foo}} // if not
 					bool f = atoi(value.c_str()) == 0;
 					condition_stack.push_back(f);
-					UpdateEmission();
+					UpdateCondition();
 				} else if (iskey("else")) { // {{.else}}
-					emission = !emission;
+					condition = !condition;
 				} else if (iskey("end")) { // {{.end}}
 					END();
 				}

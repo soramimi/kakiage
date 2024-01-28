@@ -167,6 +167,8 @@ std::string readfile(char const *path)
 //
 int main(int argc, char **argv)
 {
+	strtemplate st;
+	st.set_html_mode(false);
 	std::string input_path;
 	std::string output_path;
 	std::string template_path;
@@ -175,21 +177,25 @@ int main(int argc, char **argv)
 	while (i < argc) {
 		char const *arg = argv[i++];
 		if (arg[0] == '-') {
-			if (strcmp(arg, "-h") == 0 || strcmp(arg, "--help") == 0) {
+			auto IsArg = [&](char const *name)->bool{
+				return strcmp(arg, name) == 0;
+			};
+			if (IsArg("-h") || IsArg("--help")) {
 				help = true;
-			}
-			if (strcmp(arg, "-t") == 0) {
+			} else if (IsArg("-t")) {
 				if (i < argc) {
 					template_path = argv[i++];
 				} else {
 					fprintf(stderr, "Too few arguments\n");
 				}
-			} else if (strcmp(arg, "-o") == 0) {
+			} else if (IsArg("-o")) {
 				if (i < argc) {
 					output_path = argv[i++];
 				} else {
 					fprintf(stderr, "Too few arguments\n");
 				}
+			} else if (IsArg("--html")) {
+				st.set_html_mode(true);
 			} else {
 				fprintf(stderr, "Unknown option: %s\n", arg);
 			}
@@ -207,6 +213,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Options:\n");
 		fprintf(stderr, "  -t <template file>\n");
 		fprintf(stderr, "  -o <output file>\n");
+		fprintf(stderr, "  --html\n");
 		return 0;
 	}
 
@@ -260,8 +267,6 @@ int main(int argc, char **argv)
 		}
 	}
 
-	strtemplate st;
-	st.html_mode = false;
 	st.evaluator = [&](std::string const &name, std::string const &arg)->std::string{
 		if (name == "inet_resolve") {
 			return inet_resolve(arg);
@@ -271,6 +276,10 @@ int main(int argc, char **argv)
 		}
 		return {};
 	};
+	st.includer = [&](std::string const &name){
+		return readfile(name.data());
+	};
+
 	std::string result = st.generate(source, map);
 
 	FILE *fp;
