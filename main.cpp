@@ -171,7 +171,7 @@ int main(int argc, char **argv)
 	st.set_html_mode(false);
 	std::string input_path;
 	std::string output_path;
-	std::string template_path;
+	std::string rules_path;
 	bool help = false;
 	int i = 1;
 	while (i < argc) {
@@ -182,9 +182,9 @@ int main(int argc, char **argv)
 			};
 			if (IsArg("-h") || IsArg("--help")) {
 				help = true;
-			} else if (IsArg("-t")) {
+			} else if (IsArg("-r")) {
 				if (i < argc) {
-					template_path = argv[i++];
+					rules_path = argv[i++];
 				} else {
 					fprintf(stderr, "Too few arguments\n");
 				}
@@ -207,22 +207,22 @@ int main(int argc, char **argv)
 			}
 		}
 	}
-	if (help || input_path.empty() || template_path.empty()) {
+	if (help || input_path.empty()) {
 		fprintf(stderr, "%s %s\n", PROGRAM_NAME, VERSION);
 		fprintf(stderr, "Usage: %s [options] <input file>\n", PROGRAM_NAME);
 		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -t <template file>\n");
+		fprintf(stderr, "  -r <rules file>\n");
 		fprintf(stderr, "  -o <output file>\n");
 		fprintf(stderr, "  --html\n");
 		return 0;
 	}
 
-	std::string source = readfile(input_path.c_str());
-	std::string templ = readfile(template_path.c_str());
+	std::string input = readfile(input_path.c_str());
+	std::string rules = readfile(rules_path.c_str());
 	std::map<std::string, std::string> map;
-	{
-		char const *begin = templ.c_str();
-		char const *end = begin + templ.size();
+	if (!rules.empty()){
+		char const *begin = rules.c_str();
+		char const *end = begin + rules.size();
 		char const *line = begin;
 		char const *endl = begin;
 		char const *eq = nullptr;
@@ -280,7 +280,7 @@ int main(int argc, char **argv)
 		return readfile(name.data());
 	};
 
-	std::string result = st.generate(source, map);
+	std::string result = st.generate(input, map);
 
 	FILE *fp;
 	if (!output_path.empty()) {
