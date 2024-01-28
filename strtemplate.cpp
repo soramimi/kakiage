@@ -207,9 +207,27 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				UpdateCondition();
 			}
 		};
+		auto EatNL = [&](){ // 改行を読み飛ばす
+			while (ptr < end) {
+				if (*ptr == '\r') {
+					ptr++;
+					if (ptr < end && *ptr == '\n') {
+						ptr++;
+					}
+					break;
+				}
+				if (*ptr == '\n') {
+					ptr++;
+					break;
+				}
+				ptr++;
+			}
+		};
+		bool envflag = false;
 		if (ptr + 4 < end && ptr[0] == '{' && ptr[1] == '{' && ptr[2] == '.' && ptr[3] == '}' && ptr[4] == '}') {
 			// {{.}}
 			ptr += 5;
+			EatNL();
 			END();
 		} else if (c == '{' && ptr + 2 < end && ptr[1] == '{' && (ptr[2] == '.' || ptr[2] == ';')) {
 			// {{. or {{;
@@ -218,16 +236,21 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				comment_depth = 1;
 			}
 			ptr++;
+
 			std::string key;
 			std::string value;
-			char const *p = ptr;
+
 			// parse {{.foo}} or {{.foo.bar}} or {{.foo(bar)}}
+			char const *p = ptr;
 			while (p + 1 < end) {
 				c = (unsigned char)*p;
-				if (p + 1 < end && c == '{' && p[1] == '{') { // {{
+				if (c == '{' && p[1] == '{') { // {{
 					if (comment_depth > 0) { // inclease comment depth
 						comment_depth++;
 					}
+					p += 2;
+				} else if (c == '$' && p[1] == '(') { // $(ENV)
+					envflag = true;
 					p += 2;
 				} else if (c == '}' && p[1] == '}') { // }}
 					if (isspace((unsigned char)*ptr)) {
@@ -241,11 +264,11 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 							if (left == '.') { // {{.foo.bar}}
 								key = value.substr(0, i);
 								value = value.substr(i + 1);
-							} else if ((left == '(' && right == ')') || (left == '<' && right == '>')) { // {{.foo(bar)}}
+							} else if (left == '(' || (i == 0 && left == '<' && right == '>')) { // {{.foo(bar)}} or {{.<bar>}}
 								key = value.substr(0, i);
 								value = value.substr(i);
 							} else {
-								fprintf(stderr, "syntax error: %s\n", value.c_str());
+								// keep key empty
 							}
 						} else {
 							// keep key empty
@@ -260,6 +283,8 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					p++;
 				}
 			}
+			ptr = p;
+
 			auto iskey = [&key](char const *s)->bool{
 				int i;
 				for (i = 0; s[i]; i++) {
@@ -290,6 +315,47 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				}
 				return false;
 			};
+
+			if (envflag) { // replace environment variables
+				std::string newvalue;
+				char const *begin = value.data();
+				char const *end = begin + value.size();
+				char const *left = begin;
+				char const *right = begin;
+				while (1) {
+					if (right < end) {
+						if (right + 1 < end && right[0] == '$' && right[1] == '(') { // $(ENV)
+							newvalue += std::string_view(left, right - left);
+							left = right;
+							right += 2;
+							char const *env = nullptr;
+							while (right < end) {
+								if (*right == ')') {
+									std::string name(left + 2, right - left - 2);
+									env = getenv(name.data()); // get environment variable
+									right++;
+									break;
+								} else {
+									right++;
+								}
+							}
+							if (env) {
+								newvalue += env; // append environment variable
+							} else {
+								newvalue += std::string_view(left, right - left);
+							}
+							left = right;
+						} else {
+							right++;
+						}
+					} else {
+						newvalue += std::string_view(left, right - left);
+						break;
+					}
+				}
+				value = newvalue;
+			}
+
 			if (value.size() > 2 && value[0] == '(' && value[value.size() - 1] == ')') {
 				value = value.substr(1, value.size() - 2);
 			}
@@ -314,11 +380,22 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					value = trimmed(value);
 				}
 				Output(value);
-
-			} else if (iskey("define")) { // {{.define.foo=bar}}
+			} else if (iskey("define")) { // {{.define.foo=bar}} or {{.define.foo bar}}
 				size_t i = value.find('=');
+				if (i == std::string::npos) { // '=' がない場合は空白で区切る
+					i = 0;
+					while (i < value.size() && !isspace((unsigned char)value[i])) i++;
+				}
 				std::string name = value.substr(0, i);
 				value = trimmed(std::string_view(value).substr(i + 1));
+				if (value.size() > 2 && value[0] == '`' && value[value.size() - 1] == '`') {
+					value = value.substr(1, value.size() - 2);
+					auto r = run(value);
+					if (r) {
+						value = *r;
+						value = trimmed(value);
+					}
+				}
 				if (!name.empty()) {
 					if (value.empty()) {
 						auto it = macro.find(name);
@@ -394,11 +471,6 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					auto it = map.find(value);
 					if (it != map.end()) {
 						value = it->second; // replace value
-					} else {
-						if (condition && comment_depth == 0) {
-							fprintf(stderr, "undefined value '%s'\n", value.c_str());
-						}
-						value = {};
 					}
 				}
 				if (Output(value)) {
@@ -414,10 +486,10 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				} else if (iskey("else")) { // {{.else}}
 					condition = !condition;
 				} else if (iskey("end")) { // {{.end}}
+					EatNL();
 					END();
 				}
 			}
-			ptr = p;
 		} else if (comment_depth == 0 && c == '&' && ptr + 1 < end && strchr("&.{}", ptr[1])) { // &. or &{ or &} or &&
 			ptr++;
 			char const *p = ptr;
