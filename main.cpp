@@ -169,9 +169,9 @@ int main(int argc, char **argv)
 {
 	strtemplate st;
 	st.set_html_mode(false);
-	std::string input_path;
+	std::string source_path;
 	std::string output_path;
-	std::string rules_path;
+	std::string config_path;
 	bool help = false;
 	int i = 1;
 	while (i < argc) {
@@ -182,9 +182,9 @@ int main(int argc, char **argv)
 			};
 			if (IsArg("-h") || IsArg("--help")) {
 				help = true;
-			} else if (IsArg("-r")) {
+			} else if (IsArg("-c")) {
 				if (i < argc) {
-					rules_path = argv[i++];
+					config_path = argv[i++];
 				} else {
 					fprintf(stderr, "Too few arguments\n");
 				}
@@ -200,25 +200,25 @@ int main(int argc, char **argv)
 				fprintf(stderr, "Unknown option: %s\n", arg);
 			}
 		} else {
-			if (input_path.empty()) {
-				input_path = arg;
+			if (source_path.empty()) {
+				source_path = arg;
 			} else {
 				fprintf(stderr, "Too many arguments\n");
 			}
 		}
 	}
-	if (help || input_path.empty()) {
+	if (help || source_path.empty()) {
 		fprintf(stderr, "%s %s\n", PROGRAM_NAME, VERSION);
-		fprintf(stderr, "Usage: %s [options] <input file>\n", PROGRAM_NAME);
+		fprintf(stderr, "Usage: %s <input file> [options]\n", PROGRAM_NAME);
 		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -r <rules file>\n");
+		fprintf(stderr, "  -c <config file>\n");
 		fprintf(stderr, "  -o <output file>\n");
 		fprintf(stderr, "  --html\n");
 		return 0;
 	}
 
-	std::string input = readfile(input_path.c_str());
-	std::string rules = readfile(rules_path.c_str());
+	std::string input = readfile(source_path.c_str());
+	std::string rules = readfile(config_path.c_str());
 	std::map<std::string, std::string> map;
 	if (!rules.empty()){
 		char const *begin = rules.c_str();
