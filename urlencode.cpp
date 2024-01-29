@@ -13,12 +13,12 @@
 
 namespace {
 
-inline void vecprint(std::vector<char> *out, char c)
+inline void append(std::vector<char> *out, char c)
 {
 	out->push_back(c);
 }
 
-inline void vecprint(std::vector<char> *out, char const *s)
+inline void append(std::vector<char> *out, char const *s)
 {
 	out->insert(out->end(), s, s + strlen(s));
 }
@@ -39,17 +39,17 @@ static void url_encode_(char const *ptr, char const *end, std::vector<char> *out
 		int c = (unsigned char)*ptr;
 		ptr++;
 		if (isalnum(c) || strchr("_.-~", c)) {
-			vecprint(out, c);
+			append(out, c);
 		} else if (utf8lazy && c >= 0x80) {
-			vecprint(out, c);
+			append(out, c);
 		} else if (c == ' ') {
-			vecprint(out, '+');
+			append(out, '+');
 		} else {
 			char tmp[10];
 			sprintf(tmp, "%%%02X", c);
-			vecprint(out, tmp[0]);
-			vecprint(out, tmp[1]);
-			vecprint(out, tmp[2]);
+			append(out, tmp[0]);
+			append(out, tmp[1]);
+			append(out, tmp[2]);
 		}
 	}
 }
@@ -121,7 +121,7 @@ static void url_decode_(char const *ptr, char const *end, std::vector<char> *out
 			c = strtol(tmp, nullptr, 16);
 			ptr += 2;
 		}
-		vecprint(out, c);
+		append(out, c);
 	}
 }
 

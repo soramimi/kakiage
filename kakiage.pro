@@ -16,6 +16,7 @@ SOURCES += \
 
 HEADERS += \
 	htmlencode.h \
+	strformat.h \
 	strtemplate.h \
 	urlencode.h
 

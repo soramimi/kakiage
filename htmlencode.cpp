@@ -12,12 +12,12 @@
 
 namespace {
 
-inline void vecprint(std::vector<char> *out, char c)
+inline void append(std::vector<char> *out, char c)
 {
 	out->push_back(c);
 }
 
-inline void vecprint(std::vector<char> *out, char const *s)
+inline void append(std::vector<char> *out, char const *s)
 {
 	out->insert(out->end(), s, s + strlen(s));
 }
@@ -46,31 +46,31 @@ static void html_encode_(char const *ptr, char const *end, bool utf8lazy, std::v
 		ptr++;
 		switch (c) {
 		case '&':
-			vecprint(vec, "&amp;");
+			append(vec, "&amp;");
 			break;
 		case '<':
-			vecprint(vec, "&lt;");
+			append(vec, "&lt;");
 			break;
 		case '>':
-			vecprint(vec, "&gt;");
+			append(vec, "&gt;");
 			break;
 		case '\"':
-			vecprint(vec, "&quot;");
+			append(vec, "&quot;");
 			break;
 		case '\'':
-			vecprint(vec, "&apos;");
+			append(vec, "&apos;");
 			break;
 		case '\t':
 		case '\n':
-			vecprint(vec, c);
+			append(vec, c);
 			break;
 		default:
 			if (c < 0x80 ? (c < 0x20 || c == '\'') : !utf8lazy) {
 				char tmp[10];
 				sprintf(tmp, "&#%u;", c);
-				vecprint(vec, tmp);
+				append(vec, tmp);
 			} else {
-				vecprint(vec, c);
+				append(vec, c);
 			}
 		}
 	}
@@ -89,21 +89,21 @@ static void html_decode_(char const *ptr, char const *end, std::vector<char> *ve
 			std::string t(ptr, next);
 			if (t[0] == '#') {
 				c = atoi(t.c_str() + 1);
-				vecprint(vec, c);
+				append(vec, c);
 			} else if (t == "amp") {
-				vecprint(vec, '&');
+				append(vec, '&');
 			} else if (t == "lt") {
-				vecprint(vec, '<');
+				append(vec, '<');
 			} else if (t == "gt") {
-				vecprint(vec, '>');
+				append(vec, '>');
 			} else if (t == "quot") {
-				vecprint(vec, '\"');
+				append(vec, '\"');
 			} else if (t == "apos") {
-				vecprint(vec, '\'');
+				append(vec, '\'');
 			}
 			ptr = next + 1;
 		} else {
-			vecprint(vec, c);
+			append(vec, c);
 		}
 	}
 }

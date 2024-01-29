@@ -10,6 +10,7 @@
 class strtemplate {
 private:
 	bool html_mode_ = true;
+	std::vector<std::vector<char> > build_string(const char *begin, const char *end, char stop, const char **next);
 public:
 
 	bool is_html_mode() const
@@ -24,7 +25,7 @@ public:
 	std::vector<std::map<std::string, std::string> *> defines;
 
 	std::function<std::optional<std::string> (std::string const &name, std::string const &arg)> evaluator;
-	std::function<std::string (std::string const &file)> includer;
+	std::function<std::optional<std::string> (std::string const &file)> includer;
 
 	std::string generate(const std::string &source, const std::map<std::string, std::string> &map, int include_depth = 0);
 

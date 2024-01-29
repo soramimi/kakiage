@@ -148,11 +148,11 @@ std::string inet_checkip()
  * @param[in] path ファイルパス
  * @return ファイルの内容
  */
-std::string readfile(char const *path)
+std::optional<std::string> readfile(char const *path)
 {
 	std::vector<char> vec;
 	int fd = open(path, O_RDONLY | O_BINARY);
-	if (fd < 0) return {};
+	if (fd < 0) return std::nullopt;
 	vec.clear();
 	while (true) {
 		char buf[65536];
@@ -169,9 +169,62 @@ int main(int argc, char **argv)
 {
 	strtemplate st;
 	st.set_html_mode(false);
+
 	std::string source_path;
 	std::string output_path;
-	std::string config_path;
+	std::string input_text;
+
+	std::map<std::string, std::string> map;
+	auto ParseConfigFile = [&](char const *path){
+		auto rules = readfile(path);
+		if (rules && !rules->empty()){
+			char const *begin = rules->data();
+			char const *end = begin + rules->size();
+			char const *line = begin;
+			char const *endl = begin;
+			char const *eq = nullptr;
+			char const *comment = nullptr;
+			int linenum = 0;
+			while (endl < end) {
+				int c = endl < end ? (unsigned char)*endl : -1;
+				if (c == '\n' || c == '\r' || c == -1) {
+					char const *left = line;
+					char const *right = endl;
+					if (comment && comment < right) {
+						right = comment;
+					}
+					while (left < right && isspace((unsigned char)*left)) left++;
+					while (left < right && isspace((unsigned char)right[-1])) right--;
+					if (left < right) {
+						if (eq) {
+							std::string name(left, eq);
+							std::string value(eq + 1, right);
+							map[name] = value;
+						} else {
+							std::string s(line, endl);
+							fprintf(stderr, "Syntax error (%d): %s\n", linenum + 1, s.c_str());
+						}
+					}
+					if (c < 0) break;
+					comment = nullptr;
+					eq = nullptr;
+					line = ++endl;
+					linenum++;
+				} else if (c == '=') {
+					if (!eq && !comment) {
+						eq = endl;
+					}
+					endl++;
+				} else if (c == '#' || c == ';') {
+					comment = endl;
+					endl++;
+				} else {
+					endl++;
+				}
+			}
+		}
+	};
+
 	bool help = false;
 	int i = 1;
 	while (i < argc) {
@@ -182,9 +235,45 @@ int main(int argc, char **argv)
 			};
 			if (IsArg("-h") || IsArg("--help")) {
 				help = true;
-			} else if (IsArg("-c")) {
+			} else if (IsArg("-d")) {
 				if (i < argc) {
-					config_path = argv[i++];
+					ParseConfigFile(argv[i++]);
+				} else {
+					fprintf(stderr, "Too few arguments\n");
+				}
+			} else if (strncmp(arg, "-D", 2) == 0) {
+				if (arg[2] == 0) {
+					if (i < argc) {
+						std::string a = argv[i++];
+						size_t p = a.find('=');
+						if (p != std::string::npos) {
+							std::string name = a.substr(0, p);
+							std::string value = a.substr(p + 1);
+							map[name] = value;
+						} else {
+							fprintf(stderr, "Syntax error: %s\n", a.c_str());
+						}
+					} else {
+						fprintf(stderr, "Too few arguments\n");
+					}
+				} else {
+					std::string a = arg + 2;
+					size_t p = a.find('=');
+					if (p != std::string::npos) {
+						std::string name = a.substr(0, p);
+						std::string value = a.substr(p + 1);
+						map[name] = value;
+					} else {
+						fprintf(stderr, "Syntax error: %s\n", a.c_str());
+					}
+				}
+			} else if (IsArg("-s")) {
+				if (i < argc) {
+					if (input_text.empty()) {
+						input_text = argv[i++];
+					} else {
+						fprintf(stderr, "Too many arguments\n");
+					}
 				} else {
 					fprintf(stderr, "Too few arguments\n");
 				}
@@ -207,71 +296,40 @@ int main(int argc, char **argv)
 			}
 		}
 	}
-	if (help || source_path.empty()) {
+
+	if (source_path.empty()) {
+		if (input_text.empty()) {
+			help = true;
+		}
+	} else if (input_text.empty()) {
+		auto file = readfile(source_path.c_str());
+		if (file) {
+			input_text = *file;
+		} else {
+			fprintf(stderr, "Failed to open input file: %s\n", source_path.c_str());
+		}
+	} else {
+		help = true;
+	}
+
+	if (help) {
 		fprintf(stderr, "%s %s\n", PROGRAM_NAME, VERSION);
-		fprintf(stderr, "Usage: %s <input file> [options]\n", PROGRAM_NAME);
+		fprintf(stderr, "Usage: %s [options] (<input file> | -s <input text>)\n", PROGRAM_NAME);
 		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -c <config file>\n");
+		fprintf(stderr, "  -d <definision file>\n");
+		fprintf(stderr, "  -D <name>=<value>\n");
 		fprintf(stderr, "  -o <output file>\n");
+		fprintf(stderr, "  -s <input text>\n");
 		fprintf(stderr, "  --html\n");
 		return 0;
 	}
 
-	std::string input = readfile(source_path.c_str());
-	std::string rules = readfile(config_path.c_str());
-	std::map<std::string, std::string> map;
-	if (!rules.empty()){
-		char const *begin = rules.c_str();
-		char const *end = begin + rules.size();
-		char const *line = begin;
-		char const *endl = begin;
-		char const *eq = nullptr;
-		char const *comment = nullptr;
-		int linenum = 0;
-		while (endl < end) {
-			int c = endl < end ? (unsigned char)*endl : -1;
-			if (c == '\n' || c == '\r' || c == -1) {
-				char const *left = line;
-				char const *right = endl;
-				if (comment && comment < right) {
-					right = comment;
-				}
-				while (left < right && isspace((unsigned char)*left)) left++;
-				while (left < right && isspace((unsigned char)right[-1])) right--;
-				if (left < right) {
-					if (eq) {
-						std::string name(left, eq);
-						std::string value(eq + 1, right);
-						map[name] = value;
-					} else {
-						std::string s(line, endl);
-						fprintf(stderr, "Syntax error (%d): %s\n", linenum + 1, s.c_str());
-					}
-				}
-				if (c < 0) break;
-				comment = nullptr;
-				eq = nullptr;
-				line = ++endl;
-				linenum++;
-			} else if (c == '=') {
-				if (!eq && !comment) {
-					eq = endl;
-				}
-				endl++;
-			} else if (c == '#' || c == ';') {
-				comment = endl;
-				endl++;
-			} else {
-				endl++;
-			}
-		}
-	}
-
 	st.evaluator = [&](std::string const &name, std::string const &arg)->std::string{
-		if (name == "inet_resolve") {
+		if (name == "inet_resolve") { // inet_resolve("example.com")
 			return inet_resolve(arg);
 		}
-		if (name == "inet_checkip") {
+		if (name == "inet_checkip") { // my global ip address
+			(void)arg;
 			return inet_checkip();
 		}
 		return {};
@@ -280,7 +338,7 @@ int main(int argc, char **argv)
 		return readfile(name.data());
 	};
 
-	std::string result = st.generate(input, map);
+	std::string result = st.generate(input_text, map);
 
 	FILE *fp;
 	if (!output_path.empty()) {

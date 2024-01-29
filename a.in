@@ -1,11 +1,11 @@
-{{.}}
-{{.include(hoge.txt)}}
-{{.include.hoge.txt}}
-{{.(hoge.txt)}}
+{{.%("format: %s", <hoge.txt>)}}
+{{#include(hoge.txt)}}
+{{#include.hoge.txt}}
+{{.<hoge.txt>}}
 name = {{.name}}
 age = {{.age}}
-{{.put.inet_resolve(home.soramimi.jp)}}
-{{.put.inet_checkip}}
+{{#put.inet_resolve(home.soramimi.jp)}}
+{{#put.inet_checkip}}
 {{.`uname -a`}}
-{{.define.a `$(USER)`}}
-{{.put.a}}
+{{#define.a `$(USER)`}}
+{{#put.a}}
