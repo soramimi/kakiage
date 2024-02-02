@@ -5,6 +5,7 @@
 #include <cstring>
 #include <string_view>
 #include <optional>
+#include "webclient.h"
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -104,6 +105,7 @@ void finalize_curl()
  */
 std::string inet_checkip()
 {
+#if 0
 	if (!inet_checkip_cache) {
 		std::vector<char> buffer;
 
@@ -141,6 +143,19 @@ std::string inet_checkip()
 		inet_checkip_cache = std::string(begin, end);
 	}
 	return *inet_checkip_cache;
+#else
+	WebContext wc(WebClient::HTTP_1_1);
+	wc.set_keep_alive_enabled(false);
+	WebClient http(&wc);
+	if (!http.get(WebClient::Request("http://checkip.amazonaws.com/"))) {
+		return {};
+	}
+	char const *begin = http.content_data();
+	char const *end = begin + http.content_length();
+	std::string_view v(http.content_data(), http.content_length());
+	v = strtemplate::trimmed(v);
+	return std::string(begin, end);
+#endif
 }
 
 /**

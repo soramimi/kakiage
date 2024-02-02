@@ -6,19 +6,25 @@ CONFIG -= qt
 
 DESTDIR = $$PWD/out
 
-LIBS += -lcurl
+LIBS += -lcurl -lssl -lcrypto
 
 SOURCES += \
+        base64.cpp \
         htmlencode.cpp \
         main.cpp \
+        misc.cpp \
         strtemplate.cpp \
-        urlencode.cpp
+        urlencode.cpp \
+        webclient.cpp
 
 HEADERS += \
+	base64.h \
 	htmlencode.h \
+	misc.h \
 	strformat.h \
 	strtemplate.h \
-	urlencode.h
+	urlencode.h \
+	webclient.h
 
 win32 {
 	SOURCES += Win32Process.cpp

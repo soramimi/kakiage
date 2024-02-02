@@ -29,6 +29,7 @@ public:
 
 	std::string generate(const std::string &source, const std::map<std::string, std::string> &map, int include_depth = 0);
 
+	static std::string_view trimmed(const std::string_view &s);
 };
 
 #endif // STRTEMPLATE_H

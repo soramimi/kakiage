@@ -25,16 +25,6 @@ static inline void append(std::vector<char> *out, std::string_view const &s)
 	append(out, s.begin(), s.end());
 }
 
-std::string_view trimmed(const std::string_view &s)
-{
-	size_t i = 0;
-	size_t j = s.size();
-	char const *p = s.data();
-	while (i < j && isspace((unsigned char)p[i])) i++;
-	while (i < j && isspace((unsigned char)p[j - 1])) j--;
-	return s.substr(i, j - i);
-}
-
 std::string_view to_string(std::vector<char> const &vec)
 {
 	if (!vec.empty()) {
@@ -99,9 +89,9 @@ static inline std::vector<std::string_view> split_internal(char const *begin, ch
 			return false;
 		};
 		if (is_separator(c) || c < 0) {
-			std::basic_string_view<char> line(left, ptr - left);
+			std::string_view line(left, ptr - left);
 			if (opt.trim_spaces) {
-				line = trimmed(line);
+				line = strtemplate::trimmed(line);
 			}
 			if (opt.keep_empty_lines || !line.empty()) {
 				out.push_back(line);
@@ -157,6 +147,17 @@ std::optional<std::string> run(std::string const &command)
 }
 
 } // namespace
+
+std::string_view strtemplate::trimmed(const std::string_view &s)
+{
+	size_t i = 0;
+	size_t j = s.size();
+	char const *p = s.data();
+	while (i < j && isspace((unsigned char)p[i])) i++;
+	while (i < j && isspace((unsigned char)p[j - 1])) j--;
+	return s.substr(i, j - i);
+}
+
 
 std::vector<std::vector<char>> strtemplate::build_string(char const *begin, char const *end, char stop, char const **next)
 {
