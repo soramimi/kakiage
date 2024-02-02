@@ -65,7 +65,9 @@ static inline void vappend(std::vector<char> *out, char const *begin, char const
 
 static inline void vappend(std::vector<char> *out, std::string_view const &s)
 {
-	vappend(out, s.begin(), s.end());
+	char const *p = s.data();
+	size_t n = s.size();
+	vappend(out, p, p + n);
 }
 
 static inline void vappend(std::vector<char> *out, char const *p, int n = -1)
@@ -468,7 +470,7 @@ void WebClient::append(char const *ptr, size_t len, std::vector<char> *out, WebC
 
 namespace {
 
-static int stricmp(char const *s1, char const *s2)
+static int stricmp_(char const *s1, char const *s2)
 {
 #ifdef _WIN32
 	return ::stricmp(s1, s2);
@@ -477,7 +479,7 @@ static int stricmp(char const *s1, char const *s2)
 #endif
 }
 
-static int strnicmp(char const *s1, char const *s2, size_t n)
+static int strnicmp_(char const *s1, char const *s2, size_t n)
 {
 #ifdef _WIN32
 	return ::strnicmp(s1, s2, n);
@@ -494,7 +496,7 @@ static char *stristr(char *str1, char const *str2)
 	size_t len1 = strlen(str1);
 	size_t len2 = strlen(str2);
 	for (size_t i = 0; i + len2 <= len1; i++) {
-		if (strnicmp(str1 + i, str2, len2) == 0) {
+		if (strnicmp_(str1 + i, str2, len2) == 0) {
 			return str1 + i;
 		}
 	}
@@ -528,7 +530,7 @@ public:
 					char *p = strchr(begin, ':');
 					if (p && *p == ':') {
 						*p++ = 0;
-						auto IS = [&](char const *name){ return stricmp(begin, name) == 0; };
+						auto IS = [&](char const *name){ return stricmp_(begin, name) == 0; };
 						if (IS("content-length")) {
 							content_length = strtol(p, nullptr, 10);
 						} else if (IS("connection")) {
@@ -1078,7 +1080,7 @@ std::string WebClient::header_value(std::vector<std::string> const *header, std:
 		char const *end = begin + line.size();
 		char const *colon = strchr(begin, ':');
 		if (colon) {
-			if (strnicmp(begin, name.c_str(), name.size()) == 0) {
+			if (strnicmp_(begin, name.c_str(), name.size()) == 0) {
 				char const *ptr = colon + 1;
 				while (ptr < end && isspace(*ptr & 0xff)) ptr++;
 				return std::string(ptr, end);

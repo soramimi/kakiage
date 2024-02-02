@@ -1,30 +1,68 @@
 #include <windows.h>
 #include "Win32Process.h"
-#include <QThread>
-#include <QTextCodec>
+// #include <QThread>
+// #include <QTextCodec>
 #include <deque>
-#include <QDir>
-#include <QDebug>
-#include <QDateTime>
-#include <QMutex>
+// #include <QDir>
+// #include <QDebug>
+// #include <QDateTime>
+// #include <QMutex>
+#include <mutex>
+#include <thread>
 
-QString GetErrorMessage(DWORD e)
+#include <windows.h>
+#include <stdio.h>
+
+/**
+ * @brief atow
+ * @param utf8
+ * @return
+ *
+ * Convert UTF-8 to UTF-16
+ */
+std::wstring atow(std::string const &utf8)
 {
-	QString msg;
+	std::wstring utf16;
+
+	// UTF-8エンコードされた文字列
+	size_t utf8len = utf8.size();
+
+	// UTF-8からUTF-16に変換するために必要なバッファサイズを取得
+	int utf16Length = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), utf8len, NULL, 0);
+
+	// UTF-16文字列を格納するためのバッファを確保
+	wchar_t *utf16String = (wchar_t *)alloca((utf16Length + 1) * sizeof(wchar_t));
+
+	if (utf16String) {
+		// UTF-8文字列をUTF-16に変換
+		MultiByteToWideChar(CP_UTF8, 0, utf8.data(), utf8len, utf16String, utf16Length);
+
+		// 終端文字を追加
+		utf16String[utf16Length] = L'\0';
+		utf16 = utf16String;
+	}
+
+	return utf16;
+}
+
+std::wstring GetErrorMessage(DWORD e)
+{
+	std::wstring msg;
 	wchar_t *p = nullptr;
 	size_t size = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, e, 0, (wchar_t *)&p, 0, nullptr);
-	msg = QString::fromUtf16((ushort const *)p);
+	msg = p;
 	LocalFree(p);
 	return msg;
 }
 
-class OutputReaderThread : public QThread {
+class OutputReaderThread {
 private:
 	HANDLE hRead;
-	QMutex *mutex;
+	std::mutex *mutex = nullptr;
+	std::thread thread;
 	std::deque<char> *buffer;
 protected:
-	void run() override
+	void run()
 	{
 		while (1) {
 			char buf[256];
@@ -32,26 +70,37 @@ protected:
 			if (!ReadFile(hRead, buf, sizeof(buf), &len, nullptr)) break;
 			if (len < 1) break;
 			if (buffer) {
-				QMutexLocker lock(mutex);
+				std::lock_guard lock(*mutex);
 				buffer->insert(buffer->end(), buf, buf + len);
 			}
 		}
 	}
 public:
-	OutputReaderThread(HANDLE hRead, QMutex *mutex, std::deque<char> *buffer)
+	OutputReaderThread(HANDLE hRead, std::mutex *mutex, std::deque<char> *buffer)
 		: hRead(hRead)
 		, mutex(mutex)
 		, buffer(buffer)
 	{
 	}
+	void start()
+	{
+		thread = std::thread([&](){ run(); });
+	}
+	void wait()
+	{
+		if (thread.joinable()) {
+			thread.join();
+		}
+	}
 };
 
-class Win32ProcessThread : public QThread {
+class Win32ProcessThread {
 	friend class Win32Process2;
 private:
 public:
-	QMutex *mutex = nullptr;
-	QString command;
+	std::mutex *mutex = nullptr;
+	std::thread thread;
+	std::wstring command;
 	DWORD exit_code = -1;
 	std::deque<char> inq;
 	std::deque<char> outq;
@@ -62,7 +111,6 @@ public:
 
 	void reset()
 	{
-		mutex = nullptr;
 		command.clear();
 		exit_code = -1;
 		inq.clear();
@@ -74,7 +122,7 @@ public:
 	}
 
 protected:
-	void run() override
+	void run()
 	{
 		try {
 			hInputWrite = INVALID_HANDLE_VALUE;
@@ -137,7 +185,7 @@ protected:
 
 			int len = command.size();
 			wchar_t *tmp = (wchar_t *)alloca(sizeof(wchar_t) * (len + 1));
-			memcpy(tmp, command.utf16(), sizeof(wchar_t) * len);
+			memcpy(tmp, command.data(), sizeof(wchar_t) * len);
 			tmp[len] = 0;
 			std::vector<wchar_t> env;
 			{
@@ -158,7 +206,6 @@ protected:
 			}
 			if (!CreateProcessW(nullptr, tmp, nullptr, nullptr, TRUE, CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT, (void *)env.data(), nullptr, &si, &pi)) {
 				DWORD e = GetLastError();
-				qDebug() << e << GetErrorMessage(e);
 				throw std::string("Failed to CreateProcess: ");
 			}
 
@@ -181,7 +228,7 @@ protected:
 				if (r == WAIT_OBJECT_0) break;
 				if (r == WAIT_FAILED) break;
 				{
-					QMutexLocker lock(mutex);
+					std::lock_guard lock(*mutex);
 					int n = inq.size();
 					if (n > 0) {
 						while (n > 0) {
@@ -227,19 +274,29 @@ public:
 	}
 	void writeInput(char const *ptr, int len)
 	{
-		QMutexLocker lock(mutex);
+		std::lock_guard lock(*mutex);
 		inq.insert(inq.end(), ptr, ptr + len);
+	}
+	void start()
+	{
+		thread = std::thread([&](){ run(); });
+	}
+	void wait()
+	{
+		if (thread.joinable()) {
+			thread.join();
+		}
 	}
 };
 
-QString toQString(const std::vector<char> &vec)
+std::wstring toQString(const std::vector<wchar_t> &vec)
 {
-	if (vec.empty()) return QString();
-	return QString::fromUtf8(&vec[0], vec.size());
+	if (vec.empty()) return {};
+	return std::wstring(vec.data(), vec.size());
 }
 
 struct Win32Process::Private {
-	QMutex mutex;
+	std::mutex mutex;
 	Win32ProcessThread th;
 
 };
@@ -255,11 +312,13 @@ Win32Process::~Win32Process()
 	delete m;
 }
 
-void Win32Process::start(QString const &command, bool use_input)
+void Win32Process::start(const std::string &command, bool use_input)
 {
-	QByteArray ba = command.toUtf8();
-	ba.push_back((char)0);
-	char const *cmd = ba.data();
+	std::wstring command16 = atow(command);
+
+	std::vector<wchar_t> ba(command16.size() + 1);
+	wchar_t *cmd = ba.data();
+	wcscpy(cmd, command16.data());
 
 	m->th.mutex = &m->mutex;
 	m->th.use_input = use_input;
@@ -280,14 +339,14 @@ int Win32Process::wait()
 	return exit_code;
 }
 
-QString Win32Process::outstring() const
+std::string Win32Process::outstring() const
 {
-	return toQString(outbytes);
+	return {outbytes.data(), outbytes.size()};
 }
 
-QString Win32Process::errstring() const
+std::string Win32Process::errstring() const
 {
-	return toQString(errbytes);
+	return {errbytes.data(), errbytes.size()};
 }
 
 void Win32Process::writeInput(char const *ptr, int len)

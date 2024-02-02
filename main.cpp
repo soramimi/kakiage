@@ -10,6 +10,7 @@
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
+#include <WinSock2.h>
 #else
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -22,7 +23,7 @@
 #define O_BINARY 0
 #endif
 
-#include <curl/curl.h>
+// #include <curl/curl.h>
 
 #define PROGRAM_NAME "kakiage"
 
@@ -40,6 +41,14 @@ std::string inet_resolve(std::string const &name)
 {
 	auto it = inet_resolve_cache.find(name);
 	if (it == inet_resolve_cache.end()) {
+#if defined(_WIN32) || defined(__APPLE__)
+		struct hostent *he = nullptr;
+		he = ::gethostbyname(name.c_str());
+		if (!he) return {};
+		auto a = inet_ntoa(*(in_addr *)he->h_addr_list[0]);
+#elif 0
+		gethostbyname_r(name, &tmp, buf, sizeof(buf), &he, &err);
+#else
 		struct addrinfo hints, *res;
 		struct in_addr addr;
 		memset(&hints, 0, sizeof(hints));
@@ -49,11 +58,14 @@ std::string inet_resolve(std::string const &name)
 		if (err) return {};
 		addr.s_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr;
 		freeaddrinfo(res);
-		it = inet_resolve_cache.insert(inet_resolve_cache.end(), std::make_pair(name, inet_ntoa(addr)));
+		auto a = inet_ntoa(addr);
+#endif
+		it = inet_resolve_cache.insert(inet_resolve_cache.end(), std::make_pair(name, a));
 	}
 	return it->second;
 }
 
+#if 0
 /**
  * @brief libcurlのコールバック関数
  * @param[in] contents 受信したデータ
@@ -71,6 +83,7 @@ static size_t _write_callback(void *contents, size_t size, size_t nmemb, void *u
 	out->insert(out->end(), begin, end);
 	return realsize;
 }
+#endif
 
 /**
  * @brief libcurlの初期化済みフラグ
@@ -84,7 +97,14 @@ void initialize_curl()
 {
 	if (!_curl_global_initialized) {
 		_curl_global_initialized = true;
+#if 0
 		curl_global_init(CURL_GLOBAL_ALL);
+#else
+#ifdef _WIN32
+		WSADATA wsaData;
+		WSAStartup(MAKEWORD(2, 2), &wsaData);
+#endif
+#endif
 	}
 }
 
@@ -95,7 +115,13 @@ void finalize_curl()
 {
 	if (_curl_global_initialized) {
 		_curl_global_initialized = false;
+#if 0
 		curl_global_cleanup();
+#else
+#ifdef _WIN32
+		WSACleanup();
+#endif
+#endif
 	}
 }
 

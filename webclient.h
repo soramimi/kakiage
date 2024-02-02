@@ -6,8 +6,8 @@
 #include <string>
 #include <functional>
 
-#define USE_OPENSSL 1
-#define OPENSSL_NO_SHA1 1
+// #define USE_OPENSSL 1
+// #define OPENSSL_NO_SHA1 1
 
 class WebContext;
 class WebClient;

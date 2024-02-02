@@ -9,6 +9,7 @@
 
 
 #ifdef _WIN32
+#include "Win32Process.h"
 #else
 #include "UnixProcess.h"
 #endif
@@ -22,7 +23,7 @@ static inline void append(std::vector<char> *out, char const *begin, char const 
 
 static inline void append(std::vector<char> *out, std::string_view const &s)
 {
-	append(out, s.begin(), s.end());
+	append(out, s.data(), s.data() + s.size());
 }
 
 std::string_view to_string(std::vector<char> const &vec)
@@ -138,7 +139,11 @@ std::vector<std::string_view> split_words(std::string_view const &str, char sep)
 
 std::optional<std::string> run(std::string const &command)
 {
+#ifdef _WIN32
+	Win32Process proc;
+#else
 	UnixProcess proc;
+#endif
 	proc.start(command, false);
 	if (proc.wait() == 0) {
 		return proc.outstring();
@@ -417,7 +422,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					if (isspace((unsigned char)*ptr)) {
 						key = value = {};
 					} else {
-						value = {ptr, p - ptr};
+						value = std::string(ptr, p);
 						size_t i = find_any(value, ".(<$%");
 						if (i != std::string::npos) {
 							int left = value[i];

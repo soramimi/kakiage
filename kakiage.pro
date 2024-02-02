@@ -6,8 +6,6 @@ CONFIG -= qt
 
 DESTDIR = $$PWD/out
 
-LIBS += -lcurl -lssl -lcrypto
-
 SOURCES += \
         base64.cpp \
         htmlencode.cpp \
