@@ -6,10 +6,6 @@
 #include <winsock2.h>
 #include <windows.h>
 #pragma comment(lib, "ws2_32.lib")
-#if USE_OPENSSL
-//#pragma comment(lib, "libeay32.lib")
-//#pragma comment(lib, "ssleay32.lib")
-#endif
 typedef SOCKET socket_t;
 #pragma warning(disable:4996)
 #else
@@ -32,7 +28,6 @@ using socket_t = int;
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
-//#include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #if (OPENSSL_VERSION_NUMBER >= 0x30000000L && !defined SSL_get_peer_certificate)
 #define SSL_get_peer_certificate(s) SSL_get1_peer_certificate(s)
@@ -45,7 +40,6 @@ typedef void SSL_CTX;
 #include <set>
 #include <cassert>
 #include "base64.h"
-#include "misc.h"
 
 #define USER_AGENT "Generic Web Client"
 
@@ -58,24 +52,46 @@ typedef void SSL_CTX;
 
 namespace {
 
-static inline void vappend(std::vector<char> *out, char const *begin, char const *end)
+void vappend(std::vector<char> *vec, char const *begin, char const *end)
 {
-	out->insert(out->end(), begin, end);
+	vec->insert(vec->end(), begin, end);
 }
 
-static inline void vappend(std::vector<char> *out, std::string_view const &s)
+void vappend(std::vector<char> *vec, char const *p, size_t n)
 {
-	char const *p = s.data();
-	size_t n = s.size();
-	vappend(out, p, p + n);
+	vappend(vec, p, p + n);
 }
 
-static inline void vappend(std::vector<char> *out, char const *p, int n = -1)
+void vappend(std::vector<char> *vec, std::string_view const &s)
 {
-	if (n < 0) {
-		n = strlen(p);
-	}
-	vappend(out, std::string_view(p, n));
+	vappend(vec, s.data(), s.size());
+}
+
+std::string_view trimmed(const std::string_view &s)
+{
+	size_t i = 0;
+	size_t j = s.size();
+	while (i < j && std::isspace((unsigned char)s[i])) i++;
+	while (i < j && std::isspace((unsigned char)s[j - 1])) j--;
+	return s.substr(i, j - i);
+}
+
+int _stricmp(char const *s1, char const *s2)
+{
+#ifdef _WIN32
+	return ::stricmp(s1, s2);
+#else
+	return ::strcasecmp(s1, s2);
+#endif
+}
+
+int _strnicmp(char const *s1, char const *s2, size_t n)
+{
+#ifdef _WIN32
+	return ::strnicmp(s1, s2, n);
+#else
+	return ::strncasecmp(s1, s2, n);
+#endif
 }
 
 } // namespace
@@ -85,18 +101,19 @@ private:
 	char buf[2048];
 	struct hostent tmp;
 public:
-	struct hostent *gethostbyname(char const *name)
+	bool gethostbyname(char const *name, in_addr *out)
 	{
 		struct hostent *he = nullptr;
-		{
-			int err = 0;
 #if defined(_WIN32) || defined(__APPLE__)
-			he = ::gethostbyname(name);
+		he = ::gethostbyname(name);
 #else
-			gethostbyname_r(name, &tmp, buf, sizeof(buf), &he, &err);
+		int err = 0;
+		gethostbyname_r(name, &tmp, buf, sizeof(buf), &he, &err);
 #endif
-		}
-		return he;
+		if (!he) return false;
+
+		memcpy(out, he->h_addr, he->h_length);
+		return true;
 	}
 };
 
@@ -468,35 +485,12 @@ void WebClient::append(char const *ptr, size_t len, std::vector<char> *out, WebC
 	}
 }
 
-namespace {
-
-static int stricmp_(char const *s1, char const *s2)
-{
-#ifdef _WIN32
-	return ::stricmp(s1, s2);
-#else
-	return ::strcasecmp(s1, s2);
-#endif
-}
-
-static int strnicmp_(char const *s1, char const *s2, size_t n)
-{
-#ifdef _WIN32
-	return ::strnicmp(s1, s2, n);
-#else
-	return ::strncasecmp(s1, s2, n);
-#endif
-
-}
-
-} // namespace
-
 static char *stristr(char *str1, char const *str2)
 {
 	size_t len1 = strlen(str1);
 	size_t len2 = strlen(str2);
 	for (size_t i = 0; i + len2 <= len1; i++) {
-		if (strnicmp_(str1 + i, str2, len2) == 0) {
+		if (_strnicmp(str1 + i, str2, len2) == 0) {
 			return str1 + i;
 		}
 	}
@@ -530,7 +524,7 @@ public:
 					char *p = strchr(begin, ':');
 					if (p && *p == ':') {
 						*p++ = 0;
-						auto IS = [&](char const *name){ return stricmp_(begin, name) == 0; };
+						auto IS = [&](char const *name){ return _stricmp(begin, name) == 0; };
 						if (IS("content-length")) {
 							content_length = strtol(p, nullptr, 10);
 						} else if (IS("connection")) {
@@ -623,6 +617,26 @@ void WebClient::receive_(RequestOption const &opt, std::function<int(char *, int
 	}
 }
 
+static int inet_connect(std::string const &hostname, int port)
+{
+	struct sockaddr_in server;
+	memset((char *)&server, 0, sizeof(server));
+	server.sin_family = AF_INET;
+
+	if (HostNameResolver().gethostbyname(hostname.data(), &server.sin_addr)) {
+		server.sin_port = htons(port);
+		socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
+		if (sock != INVALID_SOCKET) {
+			if (connect(sock, (struct sockaddr*) &server, sizeof(server)) != SOCKET_ERROR) {
+				return sock;
+			}
+			closesocket(sock);
+			return INVALID_SOCKET;
+		}
+	}
+	return INVALID_SOCKET;
+}
+
 bool WebClient::http_get(Request const &request, Post const *post, RequestOption const &opt, ResponseHeader *rh, std::vector<char> *out)
 {
 	clear_error();
@@ -644,25 +658,8 @@ bool WebClient::http_get(Request const &request, Post const *post, RequestOption
 	if (!m->keep_alive) close();
 
 	if (m->sock == INVALID_SOCKET) {
-		struct hostent *host = HostNameResolver().gethostbyname(hostname.c_str());
-		if (!host) {
-			throw Error("gethostbyname failed.");
-		}
-
-		struct sockaddr_in server;
-		memset((char *)&server, 0, sizeof(server));
-		server.sin_family = AF_INET;
-
-		memcpy((char *)&server.sin_addr, host->h_addr, host->h_length);
-
-		server.sin_port = htons(port);
-
-		m->sock = socket(AF_INET, SOCK_STREAM, 0);
+		m->sock = inet_connect(hostname, port);
 		if (m->sock == INVALID_SOCKET) {
-			throw Error("socket failed.");
-		}
-
-		if (connect(m->sock, (struct sockaddr*) &server, sizeof(server)) == SOCKET_ERROR) {
 			throw Error("connect failed.");
 		}
 	}
@@ -728,29 +725,9 @@ bool WebClient::https_get(Request const &request_req, Post const *post, RequestO
 	socket_t sock = m->sock;
 	SSL *ssl = m->ssl;
 	if (sock == INVALID_SOCKET || !ssl) {
-		int ret;
-
-		struct hostent *host = HostNameResolver().gethostbyname(server_req.url.host().c_str());
-		if (!host) {
-			throw Error("gethostbyname failed: " + server_req.url.host());
-		}
-
-		struct sockaddr_in server;
-		memset((char *)&server, 0, sizeof(server));
-		server.sin_family = AF_INET;
-
-		memcpy((char *)&server.sin_addr, host->h_addr, host->h_length);
-
-		server.sin_port = htons(port);
-
+		sock = inet_connect(hostname, port);
 		if (sock == INVALID_SOCKET) {
-			sock = socket(AF_INET, SOCK_STREAM, 0);
-			if (sock == INVALID_SOCKET) {
-				throw Error("socket failed.");
-			}
-			if (connect(sock, (struct sockaddr*) &server, sizeof(server)) == SOCKET_ERROR) {
-				throw Error("connect failed.");
-			}
+			throw Error("connect failed.");
 		}
 
 		if (proxy) { // testing
@@ -793,6 +770,7 @@ bool WebClient::https_get(Request const &request_req, Post const *post, RequestO
 		}
 		SSL_set_tlsext_host_name(ssl, hostname.c_str());
 
+		int ret;
 		ret = SSL_set_fd(ssl, sock);
 		if (ret == 0) {
 			throw Error(get_ssl_error());
@@ -1080,7 +1058,7 @@ std::string WebClient::header_value(std::vector<std::string> const *header, std:
 		char const *end = begin + line.size();
 		char const *colon = strchr(begin, ':');
 		if (colon) {
-			if (strnicmp_(begin, name.c_str(), name.size()) == 0) {
+			if (_strnicmp(begin, name.c_str(), name.size()) == 0) {
 				char const *ptr = colon + 1;
 				while (ptr < end && isspace(*ptr & 0xff)) ptr++;
 				return std::string(ptr, end);
@@ -1163,7 +1141,7 @@ void WebClient::make_application_www_form_urlencoded(char const *begin, char con
 {
 	*out = WebClient::Post();
 	out->content_type = ContentType::APPLICATION_X_WWW_FORM_URLENCODED;
-	vappend(&out->data, begin, end);
+	vappend(&out->data, begin, end - begin);
 }
 
 void WebClient::make_multipart_form_data(std::vector<Part> const &parts, WebClient::Post *out, std::string const &boundary)
@@ -1298,4 +1276,22 @@ void WebContext::notify_broken_pipe()
 {
 	m->broken_pipe = true;
 }
+
+std::string WebClient::get(std::string const &url)
+{
+	WebContext wc(WebClient::HTTP_1_1);
+	wc.set_keep_alive_enabled(false);
+	WebClient http(&wc);
+	if (http.get(WebClient::Request(url))) {
+		return {http.content_data(), http.content_length()};
+	}
+	return {};
+}
+
+std::string WebClient::checkip()
+{
+	auto s = get("http://checkip.amazonaws.com/");
+	return (std::string)trimmed(s);
+}
+
 

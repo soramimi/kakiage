@@ -126,65 +126,6 @@ void finalize_curl()
 }
 
 /**
- * @brief 現在のグローバルIPアドレスを取得する
- * @return IPアドレス
- */
-std::string inet_checkip()
-{
-#if 0
-	if (!inet_checkip_cache) {
-		std::vector<char> buffer;
-
-		CURL *curl;
-		CURLcode res;
-
-		// libcurl を初期化
-		initialize_curl();
-
-		// ハンドルを作成
-		curl = curl_easy_init();
-		if (curl) {
-			// URL を設定
-			curl_easy_setopt(curl, CURLOPT_URL, "http://checkip.amazonaws.com");
-
-			// データの受信先を設定
-			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _write_callback);
-			curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buffer);
-
-			// リクエストを実行し、エラーがあれば処理
-			res = curl_easy_perform(curl);
-			if (res != CURLE_OK) {
-				fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-			}
-
-			// ハンドルをクリーンアップ
-			curl_easy_cleanup(curl);
-		}
-
-		// 受信したデータを文字列に変換
-		char const *begin = buffer.data();
-		char const *end = begin + buffer.size();
-		while (begin < end && isspace((unsigned char)*begin)) begin++;
-		while (begin < end && isspace((unsigned char)end[-1])) end--;
-		inet_checkip_cache = std::string(begin, end);
-	}
-	return *inet_checkip_cache;
-#else
-	WebContext wc(WebClient::HTTP_1_1);
-	wc.set_keep_alive_enabled(false);
-	WebClient http(&wc);
-	if (!http.get(WebClient::Request("http://checkip.amazonaws.com/"))) {
-		return {};
-	}
-	char const *begin = http.content_data();
-	char const *end = begin + http.content_length();
-	std::string_view v(http.content_data(), http.content_length());
-	v = strtemplate::trimmed(v);
-	return std::string(begin, end);
-#endif
-}
-
-/**
  * @brief ファイルを読み込む
  * @param[in] path ファイルパス
  * @return ファイルの内容
@@ -371,7 +312,7 @@ int main(int argc, char **argv)
 		}
 		if (name == "inet_checkip") { // my global ip address
 			(void)arg;
-			return inet_checkip();
+			return WebClient::checkip();
 		}
 		return {};
 	};

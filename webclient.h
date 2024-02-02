@@ -6,8 +6,8 @@
 #include <string>
 #include <functional>
 
-// #define USE_OPENSSL 1
-// #define OPENSSL_NO_SHA1 1
+#define USE_OPENSSL 1
+#define OPENSSL_NO_SHA1 1
 
 class WebContext;
 class WebClient;
@@ -210,6 +210,9 @@ public:
 	static void make_application_www_form_urlencoded(char const *begin, char const *end, WebClient::Post *out);
 	static void make_multipart_form_data(const std::vector<Part> &parts, WebClient::Post *out, std::string const &boundary);
 	static void make_multipart_form_data(char const *data, size_t size, WebClient::Post *out, std::string const &boundary);
+
+	static std::string get(const std::string &url);
+	static std::string checkip();
 };
 
 class WebContext {

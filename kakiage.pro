@@ -6,6 +6,18 @@ CONFIG -= qt
 
 DESTDIR = $$PWD/out
 
+linux {
+	LIBS += -lssl -lcrypto
+}
+macx:INCLUDEPATH += /usr/local/Cellar/openssl@3/3.1.1/include
+macx:LIBS += /usr/local/Cellar/openssl@3/3.1.1/lib/libssl.a /usr/local/Cellar/openssl@3/3.1.1/lib/libcrypto.a
+
+win32:msvc {
+	INCLUDEPATH += "C:\Qt\Tools\OpenSSLv3\Win_x64\include"
+	LIBS += "-LC:\Qt\Tools\OpenSSLv3\Win_x64\lib"
+	LIBS += -llibcrypto -llibssl
+}
+
 SOURCES += \
         base64.cpp \
         htmlencode.cpp \
