@@ -188,7 +188,7 @@ std::vector<std::vector<char>> strtemplate::build_string(char const *begin, char
 					if (r) {
 						f.a(trimmed(*r)); // append result
 					} else {
-						fprintf(stderr, "command '%s' failed\n", s.c_str());
+						fprintf(stderr, "command '%s' failed\n", s.data());
 					}
 				} else if (j >= 2 && a[0] == '<' && a[j - 1] == '>') {
 					std::string s(a.substr(1, j - 2));
@@ -197,7 +197,7 @@ std::vector<std::vector<char>> strtemplate::build_string(char const *begin, char
 						if (t) {
 							f.a(trimmed(*t)); // append result
 						} else {
-							fprintf(stderr, "include file '%s' not found\n", s.c_str());
+							fprintf(stderr, "include file '%s' not found\n", s.data());
 						}
 					} else {
 						fprintf(stderr, "include function is not defined\n");
@@ -216,7 +216,6 @@ std::vector<std::vector<char>> strtemplate::build_string(char const *begin, char
 	std::vector<std::vector<char>> out;
 	out.push_back({});
 	out.back().reserve(256);
-	char const *left = begin;
 	char const *right = begin;
 	char quote = 0;
 	while (1) {
@@ -243,21 +242,17 @@ std::vector<std::vector<char>> strtemplate::build_string(char const *begin, char
 					right++;
 				} else if (c == '`') {
 					right++;
+					auto *left = right;
 					char const *p = end;
 					std::string t(trimmed(to_string(build_string(right, end, '`', &p))));
 					if (left < p && *p == '`') {
 						p++;
-						auto r = run(t);
-						if (r) {
-							append(&out.back(), *r);
-						} else {
-							append(&out.back(), left, right);
-						}
+						append(&out.back(), t);
 					}
-					left = right = p;
+					right = p;
 				} else if (right + 1 < end && (c == '$' || c == '%') && right[1] == '(') { // $(ENV) or %(format, ...)
-					left = right;
 					right += 2;
+					auto *left = right;
 					std::optional<std::string> text;
 					char const *p = end;
 					auto list = build_string(right, end, ')', &p);
@@ -279,7 +274,7 @@ std::vector<std::vector<char>> strtemplate::build_string(char const *begin, char
 					} else {
 						append(&out.back(), left, right);
 					}
-					left = right = p;
+					right = p;
 				} else {
 					out.back().push_back(c);
 					right++;
@@ -314,7 +309,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 
 	int comment_depth = 0;
 
-	char const *begin = source.c_str();
+	char const *begin = source.data();
 	char const *end = begin + source.size();
 	char const *ptr = begin;
 
@@ -509,7 +504,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 							std::string u = generate(*t, map); // apply template
 							outs(trimmed(u));
 						} else {
-							fprintf(stderr, "include file '%s' not found\n", value.c_str());
+							fprintf(stderr, "include file '%s' not found\n", value.data());
 						}
 					} else {
 						fprintf(stderr, "include depth too deep\n");
@@ -579,7 +574,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 						std::string u = generate(*t, map);
 						outs(u);
 					} else {
-						fprintf(stderr, "undefined macro '%s'\n", value.c_str());
+						fprintf(stderr, "undefined macro '%s'\n", value.data());
 					}
 				}
 			} else if (is_directive("include")) { // {{#include(foo)}}
@@ -590,7 +585,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 							std::string u = generate(*t, map); // apply template
 							outs(trimmed(u));
 						} else {
-							fprintf(stderr, "include file '%s' not found\n", value.c_str());
+							fprintf(stderr, "include file '%s' not found\n", value.data());
 						}
 					} else {
 						fprintf(stderr, "include depth too deep\n");
@@ -611,7 +606,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 								std::string s = "let " + (std::string)el + " = (" + (std::string)trimmed(u) + ')';
 								outs(s);
 							} else {
-								fprintf(stderr, "include file '%s' not found\n", value.c_str());
+								fprintf(stderr, "include file '%s' not found\n", value.data());
 							}
 						}
 					} else {
@@ -621,20 +616,23 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					fprintf(stderr, "include function is not defined\n");
 				}
 			} else {
-				if (!value.empty()) { // 値を置換
+				if (!extraflag) {
+					// 値を置換
 					auto it = map.find(value);
 					if (it != map.end()) {
 						value = it->second; // replace value
+					} else {
+						fprintf(stderr, "undefined symbol '%s'\n", value.data());
 					}
 				}
 				if (Output(value)) {
 					// ok
 				} else if (is_directive("if")) { // {{#if.foo}}
-					bool f = atoi(value.c_str()) != 0;
+					bool f = atoi(value.data()) != 0;
 					condition_stack.push_back(f);
 					UpdateCondition();
 				} else if (is_directive("ifn")) { // {{#ifn.foo}} // if not
-					bool f = atoi(value.c_str()) == 0;
+					bool f = atoi(value.data()) == 0;
 					condition_stack.push_back(f);
 					UpdateCondition();
 				} else if (is_directive("else")) { // {{#else}}
