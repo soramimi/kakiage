@@ -44,3 +44,7 @@ win32 {
 	SOURCES += UnixProcess.cpp
 	HEADERS += UnixProcess.h
 }
+
+DISTFILES += \
+	a.in \
+	a.ka

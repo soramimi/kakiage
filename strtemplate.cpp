@@ -7,7 +7,6 @@
 #include <vector>
 #include "strformat.h"
 
-
 #ifdef _WIN32
 #include "Win32Process.h"
 #else
@@ -15,6 +14,11 @@
 #endif
 
 namespace {
+
+static bool issym(int c)
+{
+	return isalnum(c) || c == '_';
+}
 
 static inline void append(std::vector<char> *out, char const *begin, char const *end)
 {
@@ -164,7 +168,7 @@ std::string_view strtemplate::trimmed(const std::string_view &s)
 }
 
 
-std::vector<std::vector<char>> strtemplate::build_string(char const *begin, char const *end, char stop, char const **next)
+std::vector<std::vector<char>> strtemplate::build_string(char const *begin, char const *end, char const *sep, char const *stop, std::map<std::string, std::string> const *map, char const **next)
 {
 	auto Format = [&](std::vector<std::string> const &args){
 		std::string result;
@@ -213,81 +217,148 @@ std::vector<std::vector<char>> strtemplate::build_string(char const *begin, char
 
 	*next = end;
 
+
 	std::vector<std::vector<char>> out;
 	out.push_back({});
 	out.back().reserve(256);
 	char const *right = begin;
-	char quote = 0;
-	while (1) {
-		if (right < end) {
-			char c = right[0];
-			if (quote == 0) {
-				if (c == stop) {
-					*next = right;
-					break;
-				}
-				if (stop == ')' && c == ',') {
-					right++;
-					out.push_back({});
-					out.back().reserve(256);
-					continue;
-				}
-				if (c == '\"' || c == '\'') {
-					out.back().push_back(c);
-					quote = c;
-					right++;
-				} else if (c == '<') {
-					out.back().push_back(c);
-					quote = '>';
-					right++;
-				} else if (c == '`') {
-					right++;
-					auto *left = right;
-					char const *p = end;
-					std::string t(trimmed(to_string(build_string(right, end, '`', &p))));
-					if (left < p && *p == '`') {
-						p++;
-						append(&out.back(), t);
-					}
-					right = p;
-				} else if (right + 1 < end && (c == '$' || c == '%') && right[1] == '(') { // $(ENV) or %(format, ...)
-					right += 2;
-					auto *left = right;
-					std::optional<std::string> text;
-					char const *p = end;
-					auto list = build_string(right, end, ')', &p);
-					if (left < p && *p == ')') {
-						if (c == '$') { // $(ENV)
-							std::string v = to_string(list);
-							text = getenv(v.data()); // get environment variable
-						} else if (c == '%') { // %(format, ...)
-							std::vector<std::string> args;
-							for (auto const &vec : list) {
-								args.push_back((std::string)to_string(vec));
-							}
-							text = Format(args);
-						}
-						p++;
-					}
-					if (text) {
-						append(&out.back(), *text);
-					} else {
-						append(&out.back(), left, right);
-					}
-					right = p;
+	while (right < end) {
+		char c = right[0];
+		if (strchr(stop, c)) {
+			if (map) {
+				std::string key(to_string(out.back()));
+				auto it = map->find(key);
+				if (it != map->end()) {
+					char const *begin = it->second.data();
+					char const *end = begin + it->second.size();
+					out.back() = std::vector<char>(begin, end);
 				} else {
-					out.back().push_back(c);
+					out.back().insert(out.back().begin(), '?');
+					out.back().push_back('?');
+					fprintf(stderr, "undefined symbol '%s'\n", key.data());
+				}
+			}
+			*next = right;
+			break;
+		}
+		if (sep && strchr(sep, c)) {
+			c = right[0];
+			right++;
+			out.push_back({});
+			out.back().reserve(256);
+			if (c == '(') {
+				auto list = build_string(right, end, nullptr, ")", nullptr, &right);
+				for (auto const &vec : list) {
+					out.back().insert(out.back().end(), vec.begin(), vec.end());
+				}
+				if (right < end) {
 					right++;
 				}
-			} else {
-				out.back().push_back(c);
-				if (c == quote) {
-					quote = 0;
-				}
+			}
+			continue;
+		}
+		if (c == '#') {
+			right++;
+			auto list = build_string(right, end, nullptr, ".(}", nullptr, &right);
+			c = *right;
+			if (strchr(stop, c)) {
+				*next = right;
+				break;
+			}
+			if (right < end) {
 				right++;
 			}
+			for (auto const &vec : list) {
+				out.back().insert(out.back().end(), vec.begin(), vec.end());
+			}
+			char const *se;
+			char const *st;
+			if (c == '(') {
+				se = ",";
+				st = ")}";
+			} else {
+				se = nullptr;
+				st = "}";
+			}
+			auto list2 = build_string(right, end, se, st, nullptr, &right);
+			for (auto const &vec : list2) {
+				out.emplace_back(vec.begin(), vec.end());
+			}
+			if (strchr(stop, *right)) {
+				*next = right;
+				break;
+			}
+			if (right < end && *right != '}') {
+				right++;
+			}
+			map = nullptr;
+		} else if (c == '\"' || c == '\'' || c == '`' || c == '<') {
+			right++;
+			char e[2];
+			if (c == '<') {
+				e[0] = '>';
+			} else {
+				e[0] = c;
+			}
+			e[1] = 0;
+			auto list = build_string(right, end, nullptr, e, nullptr, &right);
+			if (right < end) {
+				right++;
+			}
+			std::vector<char> v;
+			for (auto const &vec : list) {
+				if (c == '`') {
+					std::string s(to_string(vec));
+					auto r = run(s); // run command
+					if (r) {
+						append(&v, trimmed(*r)); // append result
+					} else {
+						fprintf(stderr, "command '%s' failed\n", s.data());
+					}
+				} else if (c == '<') {
+					std::string s(to_string(vec));
+					if (includer) {
+						auto t = includer(s); // load template
+						if (t) {
+							append(&v, trimmed(*t)); // append result
+						} else {
+							fprintf(stderr, "include file '%s' not found\n", s.data());
+						}
+					} else {
+						fprintf(stderr, "include function is not defined\n");
+					}
+				} else {
+					v.insert(v.end(), vec.begin(), vec.end());
+				}
+			}
+			out.back() = v;
+			map = nullptr;
+		} else if (right + 1 < end && (c == '$' || c == '%') && right[1] == '(') { // $(ENV) or %(format, ...)
+			right += 2;
+			auto list = build_string(right, end, ",", ")", nullptr, &right);
+			if (right < end) {
+				right++;
+			}
+			if (c == '$') { // $(ENV)
+				std::string v = to_string(list);
+				char *text = getenv(v.data()); // get environment variable
+				if (text) {
+					append(&out.back(), text);
+				} else {
+					fprintf(stderr, "environment variable '%s' not found\n", v.data());
+				}
+			} else if (c == '%') { // %(format, ...)
+				std::vector<std::string> args;
+				for (auto const &vec : list) {
+					args.push_back((std::string)to_string(vec));
+				}
+				std::string text = Format(args);
+				append(&out.back(), text);
+			}
+			map = nullptr;
 		} else {
-			break;
+			out.back().push_back(c);
+			right++;
 		}
 	}
 	return out;
@@ -372,81 +443,47 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				ptr++;
 			}
 		};
-		bool extraflag = false;
-		char leader = 0;
-		if (c == '{' && ptr + 2 < end && ptr[1] == '{') {
-			leader = ptr[2];
-			if (leader == '.' || leader == '#' || leader == ';') {
-				// {{. or {{# or {{;
-			} else {
-				leader = 0;
-			}
-		}
-		if (ptr + 4 < end && (leader != 0 && leader != ';') && ptr[3] == '}' && ptr[4] == '}') {
-			// {{.}} or {{#}}
-			ptr += 5;
-			EatNL();
-			END();
-			continue;
-		}
-		if (leader != 0) { // valid leader or comment
-			if (leader == ';' || (ptr + 3 < end && leader != 0 && ptr[3] == ';')) { // {{; or {{.; or {{#; is comment
-				comment_depth = 1;
-			}
+		if (c == '{' && ptr + 2 < end && ptr[1] == '{' && ptr[2] == '.') {
 			ptr += 3;
+			if (ptr + 1 < end && ptr[0] == '}' && ptr[1] == '}') {
+				// {{.}}
+				ptr += 5;
+				EatNL();
+				END();
+				continue;
+			}
+
+			if (ptr[0] == ';') { // {{.;comment}}
+				comment_depth = 1;
+				ptr++;
+			}
 
 			std::string key;
 			std::string value;
+			std::vector<std::string> values;
 
-			// parse {{.foo}} or {{.foo.bar}} or {{.foo(bar)}}
-			char const *p = ptr;
-			while (p + 1 < end) {
-				c = (unsigned char)*p;
-				if (c == '{' && p[1] == '{') { // {{
-					if (comment_depth > 0) { // inclease comment depth
-						comment_depth++;
-					}
-					p += 2;
-				} else if (c == '$' && p[1] == '(') { // $(ENV)
-					extraflag = true;
-					p += 2;
-				} else if (c == '%' && p[1] == '(') { // %(format)
-					extraflag = true;
-					p += 2;
-				} else if (c == '}' && p[1] == '}') { // }}
-					if (isspace((unsigned char)*ptr)) {
-						key = value = {};
-					} else {
-						value = std::string(ptr, p);
-						size_t i = find_any(value, ".(<$%");
-						if (i != std::string::npos) {
-							int left = value[i];
-							int right = value[value.size() - 1];
-							if (left == '.') { // {{.foo.bar}}
-								key = value.substr(0, i);
-								value = value.substr(i + 1);
-							} else if (left == '(' || (i == 0 && left == '<' && right == '>')) { // {{.foo(bar)}} or {{.<bar>}}
-								key = value.substr(0, i);
-								value = value.substr(i);
-							} else {
-								// keep key empty
-							}
-						} else {
-							// keep key empty
-						}
-					}
-					p += 2;
-					if (comment_depth < 2) {
-						break;
-					}
-					comment_depth--;
-				} else {
-					p++;
+			char leader = *ptr;
+			std::vector<std::vector<char>> v = build_string(ptr, end, ".(", "}", &map, &ptr);
+			if (ptr < end && *ptr == '}') {
+				ptr++;
+				if (ptr < end && *ptr == '}') {
+					ptr++;
 				}
 			}
-			ptr = p;
+			if (v.size() == 1) {
+				value = to_string(v[0]);
+				values.emplace_back(to_string(v[0]));
+			} else if (v.size() > 1) {
+				key = to_string(v[0]);
+				value = to_string(v[1]);
+				for (size_t i = 1; i < v.size(); i++) {
+					values.emplace_back(to_string(v[i]));
+				}
+			} else {
+				continue;
+			}
 
-			auto is_key = [&](char const *s)->bool{
+			auto IsKey = [&](char const *s)->bool{
 				int i;
 				for (i = 0; s[i]; i++) {
 					if (i >= key.size()) return false;
@@ -454,8 +491,8 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				}
 				return i == key.size();
 			};
-			auto is_directive = [&](char const *s)->bool{
-				return leader == '#' && is_key(s);
+			auto IsDirective = [&](char const *s)->bool{
+				return leader == '#' && IsKey(s);
 			};
 			auto Output = [&](std::string const &v){
 				if (key.empty()) { // {{.foo}}
@@ -465,62 +502,22 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					outs(v);
 					return true;
 				}
-				if (is_directive("html")) { // {{#html.foo}}
+				if (IsDirective("html")) { // {{.#html.foo}}
 					outs(html_encode(v, true)); // output html encoded value
 					return true;
 				}
-				if (is_directive("raw")) { // {{#raw.foo}}
+				if (IsDirective("raw")) { // {{.#raw.foo}}
 					outs(v); // output raw value
 					return true;
 				}
-				if (is_directive("url")) { // {{#url.foo}}
+				if (IsDirective("url")) { // {{.#url.foo}}
 					outs(url_encode(v, true)); // output url encoded value
 					return true;
 				}
 				return false;
 			};
 
-			if (leader == '#' && key.empty()) { // in case of {{#else}}, {{#end}}, ...
-				END();
-				std::swap(key, value);
-			}
-
-			if (extraflag) {
-				char const *begin = value.data();
-				char const *end = begin + value.size();
-				char const *p;
-				value = to_string(build_string(begin, end, 0, &p));
-			}
-
-			if (value.size() > 2 && value[0] == '(' && value[value.size() - 1] == ')') {
-				value = value.substr(1, value.size() - 2);
-			}
-			if (value.size() > 2 && value[0] == '<' && value[value.size() - 1] == '>') {
-				value = value.substr(1, value.size() - 2);
-				if (includer) {
-					if (include_depth < 10) { // limit includer depth
-						auto t = includer(value); // load template
-						if (t) {
-							std::string u = generate(*t, map); // apply template
-							outs(trimmed(u));
-						} else {
-							fprintf(stderr, "include file '%s' not found\n", value.data());
-						}
-					} else {
-						fprintf(stderr, "include depth too deep\n");
-					}
-				} else {
-					fprintf(stderr, "include function is not defined\n");
-				}
-			} else if (value.size() > 2 && value[0] == '`' && value[value.size() - 1] == '`') {
-				value = value.substr(1, value.size() - 2);
-				auto r = run(value);
-				if (r) {
-					value = *r;
-					value = trimmed(value);
-				}
-				Output(value);
-			} else if (is_directive("define")) { // {{#define.foo=bar}} or {{#define.foo bar}}
+			if (IsDirective("define")) { // {{.#define.foo=bar}} or {{.#define.foo bar}}
 				size_t i = value.find('=');
 				if (i == std::string::npos) { // '=' がない場合は空白で区切る
 					i = 0;
@@ -549,7 +546,16 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					fprintf(stderr, "define name is empty\n");
 				}
 				EatNL();
-			} else if (is_directive("put")) { // {{#put.foo}}
+			} else if (IsDirective("raw")) { // {{.#raw.foo}}
+				auto it = map.find(value);
+				if (it != map.end()) {
+					value = it->second; // replace value
+				} else {
+					value = '?' + value + '?';
+					fprintf(stderr, "undefined symbol '%s'\n", value.data());
+				}
+				Output(value);
+			} else if (IsDirective("put")) { // {{.#put.foo}}
 				auto p = value.find('(');
 				std::string arg;
 				if (p != std::string::npos) {
@@ -577,7 +583,7 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 						fprintf(stderr, "undefined macro '%s'\n", value.data());
 					}
 				}
-			} else if (is_directive("include")) { // {{#include(foo)}}
+			} else if (IsDirective("include")) { // {{.#include(foo)}}
 				if (includer) {
 					if (include_depth < 10) { // limit includer depth
 						auto t = includer(value); // load template
@@ -593,13 +599,12 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				} else {
 					fprintf(stderr, "include function is not defined\n");
 				}
-			} else if (is_directive("jsx")) { // {{#jsx(foo)}}
+			} else if (IsDirective("jsx")) { // {{.#jsx(foo)}}
 				if (includer) {
 					if (include_depth < 10) { // limit includer depth
-						auto args = split_words(value, ',');
-						if (args.size() >= 2) {
-							auto name = args[0];
-							auto el = args[1];
+						if (values.size() >= 2) {
+							auto name = trimmed(values[0]);
+							auto el = trimmed(values[1]);
 							auto t = includer((std::string)name); // load template
 							if (t) {
 								std::string u = generate(*t, map); // apply template
@@ -616,28 +621,19 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					fprintf(stderr, "include function is not defined\n");
 				}
 			} else {
-				if (!extraflag) {
-					// 値を置換
-					auto it = map.find(value);
-					if (it != map.end()) {
-						value = it->second; // replace value
-					} else {
-						fprintf(stderr, "undefined symbol '%s'\n", value.data());
-					}
-				}
 				if (Output(value)) {
 					// ok
-				} else if (is_directive("if")) { // {{#if.foo}}
+				} else if (IsDirective("if")) { // {{.#if.foo}}
 					bool f = atoi(value.data()) != 0;
 					condition_stack.push_back(f);
 					UpdateCondition();
-				} else if (is_directive("ifn")) { // {{#ifn.foo}} // if not
+				} else if (IsDirective("ifn")) { // {{.#ifn.foo}} // if not
 					bool f = atoi(value.data()) == 0;
 					condition_stack.push_back(f);
 					UpdateCondition();
-				} else if (is_directive("else")) { // {{#else}}
+				} else if (IsDirective("else")) { // {{.#else}}
 					condition = !condition;
-				} else if (is_directive("end")) { // {{#end}}
+				} else if (IsDirective("end")) { // {{.#end}}
 					EatNL();
 					END();
 				}

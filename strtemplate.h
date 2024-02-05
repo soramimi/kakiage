@@ -10,7 +10,7 @@
 class strtemplate {
 private:
 	bool html_mode_ = true;
-	std::vector<std::vector<char> > build_string(const char *begin, const char *end, char stop, const char **next);
+	std::vector<std::vector<char> > build_string(const char *begin, const char *end, const char *sep, const char *stop, const std::map<std::string, std::string> *map, const char **next);
 public:
 
 	bool is_html_mode() const
