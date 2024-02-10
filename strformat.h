@@ -837,11 +837,15 @@ private:
 		return len;
 	}
 public:
-	string_formatter() = delete;
 	string_formatter(string_formatter &&) = delete;
 	string_formatter(string_formatter const &) = delete;
 	void operator = (string_formatter &&) = delete;
 	void operator = (string_formatter const &) = delete;
+
+	string_formatter()
+	{
+		reset();
+	}
 
 	string_formatter(std::string const &text)
 		: text_(text)

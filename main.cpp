@@ -306,12 +306,13 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
-	st.evaluator = [&](std::string const &name, std::string const &arg)->std::string{
+	st.evaluator = [&](std::string const &name, std::vector<std::string> const &args)->std::string{
 		if (name == "inet_resolve") { // inet_resolve("example.com")
-			return inet_resolve(arg);
+			if (args.size() != 1) return {};
+			return inet_resolve(args[0]);
 		}
 		if (name == "inet_checkip") { // my global ip address
-			(void)arg;
+			(void)args;
 			return WebClient::checkip();
 		}
 		return {};

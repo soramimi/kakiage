@@ -1,15 +1,17 @@
-{{.#jsx(test.jsx, el)}}
-{{.#define.a $(USER)}}
-{{.#put(a)}}
-{{.#put.a(name)}}
-{{.#raw.name}}
-{{.#raw(name)}}
 {{.%("format: %s", <hoge.txt>)}}
+{{.#url(<hoge.txt>)}}
+{{.#url("<hoge.txt>")}}
+{{.#put.inet_resolve("home.soramimi.jp")}}
+{{.#put.inet_checkip}}
+{{.#jsx("test.jsx", "el")}}
+{{.#include."hoge.txt"}}
+{{.#include("hoge.txt")}}
 name = {{.name}}
 age = {{.age}}
-{{.#include(hoge.txt)}}
-{{.#include.hoge.txt}}
-{{.#put.inet_resolve(home.soramimi.jp)}}
-{{.#put.inet_checkip}}
+{{.#raw.name}}
+{{.#raw(name)}}
 {{.`uname -a`}}
 {{.<hoge.txt>}}
+{{.#define.a.$(USER)}}
+{{.#put("a")}}
+{{.#put.a}}

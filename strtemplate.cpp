@@ -17,7 +17,7 @@ namespace {
 
 static bool issym(int c)
 {
-	return isalnum(c) || c == '_';
+	return isalnum((unsigned char)c) || c == '_';
 }
 
 static inline void append(std::vector<char> *out, char const *begin, char const *end)
@@ -157,6 +157,7 @@ std::optional<std::string> run(std::string const &command)
 
 } // namespace
 
+
 std::string_view strtemplate::trimmed(const std::string_view &s)
 {
 	size_t i = 0;
@@ -167,87 +168,89 @@ std::string_view strtemplate::trimmed(const std::string_view &s)
 	return s.substr(i, j - i);
 }
 
-
-std::vector<std::vector<char>> strtemplate::build_string(char const *begin, char const *end, char const *sep, char const *stop, std::map<std::string, std::string> const *map, char const **next)
+std::string strtemplate::string_literal(char const *begin, char const *end, char stop, char const **next)
 {
-	auto Format = [&](std::vector<std::string> const &args){
-		std::string result;
-		if (!args.empty()) {
-			auto Arg = [&](int i){
-				std::string_view a = args[i];
-				a = trimmed(a);
-				size_t j = a.size();
-				if (j >= 2 && a[0] == '\"' && a[j - 1] == '\"') { // remove double quote
-					a = a.substr(1, j - 2);
-				}
-				return a;
-			};
-			strformat f((std::string)Arg(0));
-			for (size_t i = 1; i < args.size(); i++) {
-				std::string_view a = Arg(i);
-				size_t j = a.size();
-				if (j >= 2 && a[0] == '`' && a[j - 1] == '`') {
-					std::string s(a.substr(1, j - 2)); // remove back quote
-					auto r = run(s); // run command
-					if (r) {
-						f.a(trimmed(*r)); // append result
-					} else {
-						fprintf(stderr, "command '%s' failed\n", s.data());
-					}
-				} else if (j >= 2 && a[0] == '<' && a[j - 1] == '>') {
-					std::string s(a.substr(1, j - 2));
-					if (includer) {
-						auto t = includer(s); // load template
-						if (t) {
-							f.a(trimmed(*t)); // append result
-						} else {
-							fprintf(stderr, "include file '%s' not found\n", s.data());
-						}
-					} else {
-						fprintf(stderr, "include function is not defined\n");
-					}
+	std::vector<char> vec;
+	vec.reserve(256);
+	size_t i = 0;
+	for (i = 0; begin + i < end; i++) {
+		char c = begin[i];
+		if (c == stop) {
+			break;
+		}
+		if (c == '\\') {
+			i++;
+			if (begin + i < end) {
+				c = begin[i];
+				if (c == 'n') {
+					vec.push_back('\n');
+				} else if (c == 'r') {
+					vec.push_back('\r');
+				} else if (c == 't') {
+					vec.push_back('\t');
+				} else if (c == '\"') {
+					vec.push_back('\"');
+				} else if (c == '\'') {
+					vec.push_back('\'');
+				} else if (c == '\\') {
+					vec.push_back('\\');
 				} else {
-					f.a(a); // append string
+					vec.push_back(c);
 				}
 			}
-			result = f.str(); // formatted string
+		} else {
+			vec.push_back(c);
 		}
-		return result;
-	};
+	}
+	*next = begin + i;
+	return std::string(to_string(vec));
+}
 
+std::vector<std::vector<char>> strtemplate::parse_string(char const *begin, char const *end, char const *sep, char const *stop, std::map<std::string, std::string> const *map, char const **next)
+{
 	*next = end;
 
-
 	std::vector<std::vector<char>> out;
+
+	bool convert = true;
+	auto Convert = [&](){
+		if (convert) {
+			if (map) {
+				std::vector<char> const &v = out.back();
+				std::string s(trimmed(std::string_view(v.data(), v.size())));
+				auto it = map->find(s);
+				if (it != map->end()) {
+					s = it->second;
+				} else {
+					s = '?' + s + '?';
+					fprintf(stderr, "undefined symbol '%s'\n", s.data());
+				}
+				out.back().clear();
+				out.back().insert(out.back().end(), s.begin(), s.end());
+			}
+		} else {
+			convert = true;
+		}
+	};
+
 	out.push_back({});
 	out.back().reserve(256);
 	char const *right = begin;
 	while (right < end) {
 		char c = right[0];
 		if (strchr(stop, c)) {
-			if (map) {
-				std::string key(to_string(out.back()));
-				auto it = map->find(key);
-				if (it != map->end()) {
-					char const *begin = it->second.data();
-					char const *end = begin + it->second.size();
-					out.back() = std::vector<char>(begin, end);
-				} else {
-					out.back().insert(out.back().begin(), '?');
-					out.back().push_back('?');
-					fprintf(stderr, "undefined symbol '%s'\n", key.data());
-				}
-			}
+			Convert();
 			*next = right;
 			break;
 		}
 		if (sep && strchr(sep, c)) {
+			Convert();
 			c = right[0];
 			right++;
 			out.push_back({});
 			out.back().reserve(256);
 			if (c == '(') {
-				auto list = build_string(right, end, nullptr, ")", nullptr, &right);
+				auto list = parse_string(right, end, nullptr, ")", nullptr, &right);
 				for (auto const &vec : list) {
 					out.back().insert(out.back().end(), vec.begin(), vec.end());
 				}
@@ -257,85 +260,43 @@ std::vector<std::vector<char>> strtemplate::build_string(char const *begin, char
 			}
 			continue;
 		}
-		if (c == '#') {
+		if (c == '\"' || c == '\'' || c == '`' || c == '<') {
 			right++;
-			auto list = build_string(right, end, nullptr, ".(}", nullptr, &right);
-			c = *right;
-			if (strchr(stop, c)) {
-				*next = right;
-				break;
-			}
-			if (right < end) {
-				right++;
-			}
-			for (auto const &vec : list) {
-				out.back().insert(out.back().end(), vec.begin(), vec.end());
-			}
-			char const *se;
-			char const *st;
-			if (c == '(') {
-				se = ",";
-				st = ")}";
-			} else {
-				se = nullptr;
-				st = "}";
-			}
-			auto list2 = build_string(right, end, se, st, nullptr, &right);
-			for (auto const &vec : list2) {
-				out.emplace_back(vec.begin(), vec.end());
-			}
-			if (strchr(stop, *right)) {
-				*next = right;
-				break;
-			}
-			if (right < end && *right != '}') {
-				right++;
-			}
-			map = nullptr;
-		} else if (c == '\"' || c == '\'' || c == '`' || c == '<') {
-			right++;
-			char e[2];
+			char e = c;
 			if (c == '<') {
-				e[0] = '>';
-			} else {
-				e[0] = c;
+				e = '>';
 			}
-			e[1] = 0;
-			auto list = build_string(right, end, nullptr, e, nullptr, &right);
+			std::string s = string_literal(right, end, e, &right);
 			if (right < end) {
 				right++;
 			}
 			std::vector<char> v;
-			for (auto const &vec : list) {
-				if (c == '`') {
-					std::string s(to_string(vec));
-					auto r = run(s); // run command
-					if (r) {
-						append(&v, trimmed(*r)); // append result
+			if (c == '`') {
+				auto r = run(s); // run command
+				if (r) {
+					append(&v, trimmed(*r)); // append result
+				} else {
+					fprintf(stderr, "command '%s' failed\n", s.data());
+				}
+			} else if (c == '<') {
+				if (includer) {
+					auto t = includer(s); // load template
+					if (t) {
+						append(&v, trimmed(*t)); // append result
 					} else {
-						fprintf(stderr, "command '%s' failed\n", s.data());
-					}
-				} else if (c == '<') {
-					std::string s(to_string(vec));
-					if (includer) {
-						auto t = includer(s); // load template
-						if (t) {
-							append(&v, trimmed(*t)); // append result
-						} else {
-							fprintf(stderr, "include file '%s' not found\n", s.data());
-						}
-					} else {
-						fprintf(stderr, "include function is not defined\n");
+						fprintf(stderr, "include file '%s' not found\n", s.data());
 					}
 				} else {
-					v.insert(v.end(), vec.begin(), vec.end());
+					fprintf(stderr, "include function is not defined\n");
 				}
+			} else {
+				append(&v, s);
 			}
 			out.back() = v;
-			map = nullptr;
+			convert = false;
 		} else if (right + 1 < end && (c == '$' || c == '%') && right[1] == '(') { // $(ENV) or %(format, ...)
 			right += 2;
-			auto list = build_string(right, end, ",", ")", nullptr, &right);
+			auto list = parse_string(right, end, ",", ")", nullptr, &right);
 			if (right < end) {
 				right++;
 			}
@@ -348,14 +309,18 @@ std::vector<std::vector<char>> strtemplate::build_string(char const *begin, char
 					fprintf(stderr, "environment variable '%s' not found\n", v.data());
 				}
 			} else if (c == '%') { // %(format, ...)
-				std::vector<std::string> args;
-				for (auto const &vec : list) {
-					args.push_back((std::string)to_string(vec));
+				strformat f;
+				for (size_t i = 0; i < list.size(); i++) {
+					std::string a(to_string(list[i]));
+					if (i == 0) {
+						f.append(a);
+					} else {
+						f.a(a);
+					}
 				}
-				std::string text = Format(args);
-				append(&out.back(), text);
+				append(&out.back(), f.str());
 			}
-			map = nullptr;
+			convert = false;
 		} else {
 			out.back().push_back(c);
 			right++;
@@ -443,9 +408,9 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				ptr++;
 			}
 		};
-		if (c == '{' && ptr + 2 < end && ptr[1] == '{' && ptr[2] == '.') {
+		if (c == '{' && ptr + 4 < end && ptr[1] == '{' && ptr[2] == '.') {
 			ptr += 3;
-			if (ptr + 1 < end && ptr[0] == '}' && ptr[1] == '}') {
+			if (ptr[0] == '}' && ptr[1] == '}') {
 				// {{.}}
 				ptr += 5;
 				EatNL();
@@ -453,137 +418,169 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				continue;
 			}
 
-			if (ptr[0] == ';') { // {{.;comment}}
+			if (*ptr == ';') { // {{.;comment}}
 				comment_depth = 1;
 				ptr++;
 			}
 
+			enum class Directive {
+				None,
+				Raw,
+				URL,
+				HTML,
+				Put,
+				Define,
+				Include,
+				JSX,
+				If,
+				Ifn,
+				Else,
+				End,
+			} directive = Directive::None;
+
+			if (*ptr == '#') {
+				size_t i = 1;
+				while (ptr + i < end && issym(ptr[i])) {
+					i++;
+				}
+				std::string s = {ptr, i};
+				if (s == "#raw") {
+					directive = Directive::Raw;
+				} else if (s == "#html") {
+					directive = Directive::HTML;
+				} else if (s == "#url") {
+					directive = Directive::URL;
+				} else if (s == "#put") {
+					directive = Directive::Put;
+				} else if (s == "#define") {
+					directive = Directive::Define;
+				} else if (s == "#include") {
+					directive = Directive::Include;
+				} else if (s == "#jsx") {
+					directive = Directive::JSX;
+				} else if (s == "#if") {
+					directive = Directive::If;
+				} else if (s == "#ifn") {
+					directive = Directive::Ifn;
+				} else if (s == "#else") {
+					directive = Directive::Else;
+				} else if (s == "#end") {
+					directive = Directive::End;
+				} else {
+					fprintf(stderr, "unknown directive '%s'\n", s.data());
+				}
+				ptr += s.size();
+			}
+
+			auto ParseSymbol = [&](){
+				size_t i = 0;
+				while (ptr + i < end && issym(ptr[i])) {
+					i++;
+				}
+				std::string s(ptr, i);
+				ptr += i;
+				return s;
+			};
+
 			std::string key;
 			std::string value;
 			std::vector<std::string> values;
+			std::vector<std::vector<char>> vec;
 
-			char leader = *ptr;
-			std::vector<std::vector<char>> v = build_string(ptr, end, ".(", "}", &map, &ptr);
+			if (directive != Directive::None) {
+				if (ptr < end) {
+					bool keyflag = false;
+					if (directive == Directive::Define || directive == Directive::Put) {
+						keyflag = true;
+						if (*ptr == '.') {
+							ptr++;
+							key = ParseSymbol();
+						}
+					}
+					if (*ptr == '.') {
+						ptr++;
+						vec = parse_string(ptr, end, nullptr, "}", &map, &ptr);
+					} else if (*ptr == '(') {
+						ptr++;
+						vec = parse_string(ptr, end, ",", ")}", &map, &ptr);
+						if (ptr < end && *ptr == ')') {
+							ptr++;
+						}
+					}
+					if (keyflag) {
+						if (key.empty() && !vec.empty()) {
+							key = to_string(vec[0]);
+							vec.erase(vec.begin());
+						}
+					}
+				}
+			} else {
+				vec = parse_string(ptr, end, nullptr, "}", &map, &ptr);
+			}
+			for (auto const &vec : vec) {
+				values.emplace_back(to_string(vec));
+			}
 			if (ptr < end && *ptr == '}') {
 				ptr++;
 				if (ptr < end && *ptr == '}') {
 					ptr++;
 				}
 			}
-			if (v.size() == 1) {
-				value = to_string(v[0]);
-				values.emplace_back(to_string(v[0]));
-			} else if (v.size() > 1) {
-				key = to_string(v[0]);
-				value = to_string(v[1]);
-				for (size_t i = 1; i < v.size(); i++) {
-					values.emplace_back(to_string(v[i]));
-				}
-			} else {
-				continue;
+
+			if (!values.empty()) {
+				value = values[0];
 			}
 
-			auto IsKey = [&](char const *s)->bool{
-				int i;
-				for (i = 0; s[i]; i++) {
-					if (i >= key.size()) return false;
-					if (key[i] != s[i]) return false;
-				}
-				return i == key.size();
-			};
-			auto IsDirective = [&](char const *s)->bool{
-				return leader == '#' && IsKey(s);
-			};
-			auto Output = [&](std::string const &v){
-				if (key.empty()) { // {{.foo}}
-					if (is_html_mode()) { // if html mode, output html encoded value
-						html_encode(v, true);
-					}
-					outs(v);
-					return true;
-				}
-				if (IsDirective("html")) { // {{.#html.foo}}
-					outs(html_encode(v, true)); // output html encoded value
-					return true;
-				}
-				if (IsDirective("raw")) { // {{.#raw.foo}}
-					outs(v); // output raw value
-					return true;
-				}
-				if (IsDirective("url")) { // {{.#url.foo}}
-					outs(url_encode(v, true)); // output url encoded value
-					return true;
-				}
-				return false;
-			};
-
-			if (IsDirective("define")) { // {{.#define.foo=bar}} or {{.#define.foo bar}}
-				size_t i = value.find('=');
-				if (i == std::string::npos) { // '=' がない場合は空白で区切る
-					i = 0;
-					while (i < value.size() && !isspace((unsigned char)value[i])) i++;
-				}
-				std::string name = value.substr(0, i);
-				value = trimmed(std::string_view(value).substr(i + 1));
-				if (value.size() > 2 && value[0] == '`' && value[value.size() - 1] == '`') {
-					value = value.substr(1, value.size() - 2);
-					auto r = run(value);
-					if (r) {
-						value = *r;
-						value = trimmed(value);
-					}
-				}
-				if (!name.empty()) {
+			switch (directive) {
+			case Directive::HTML: // {{.#html.foo}}
+				outs(html_encode(value, true)); // output html encoded value
+				break;
+			case Directive::Raw: // {{.#raw.foo}}
+				outs(value); // output raw value
+				break;
+			case Directive::URL: // {{.#url.foo}}
+				outs(url_encode(value, true)); // output url encoded value
+				break;
+			case Directive::Define:
+				if (!key.empty()) {
 					if (value.empty()) {
-						auto it = macro.find(name);
+						auto it = macro.find(key);
 						if (it != macro.end()) {
 							macro.erase(it);
 						}
 					} else {
-						macro[name] = value;
+						macro[key] = value;
 					}
 				} else {
 					fprintf(stderr, "define name is empty\n");
 				}
 				EatNL();
-			} else if (IsDirective("raw")) { // {{.#raw.foo}}
-				auto it = map.find(value);
-				if (it != map.end()) {
-					value = it->second; // replace value
-				} else {
-					value = '?' + value + '?';
-					fprintf(stderr, "undefined symbol '%s'\n", value.data());
-				}
-				Output(value);
-			} else if (IsDirective("put")) { // {{.#put.foo}}
-				auto p = value.find('(');
-				std::string arg;
-				if (p != std::string::npos) {
-					auto left = p + 1;
-					auto right = value.find(')', left);
-					if (right != std::string::npos) {
-						arg = value.substr(left, right - left);
-					}
-					value = value.substr(0, p);
-				}
-				auto text = FindMacro(value);
-				if (text) {
-					(void)arg;
-					std::string u = generate(*text, map);
-					outs(u);
-				} else {
-					std::optional<std::string> t;
-					if (evaluator) {
-						t = evaluator(value, arg);
-					}
-					if (t) {
-						std::string u = generate(*t, map);
+				break;
+			case Directive::Put:
+				{
+					auto text = FindMacro(key);
+					if (text) {
+						std::string u = generate(*text, map);
 						outs(u);
 					} else {
-						fprintf(stderr, "undefined macro '%s'\n", value.data());
+						std::optional<std::string> t;
+						if (evaluator) {
+							std::vector<std::string> args;
+							for (size_t i = 0; i < values.size(); i++) {
+								args.emplace_back(values[i]);
+							}
+							t = evaluator(key, args);
+						}
+						if (t) {
+							std::string u = generate(*t, map);
+							outs(u);
+						} else {
+							fprintf(stderr, "undefined macro '%s'\n", value.data());
+						}
 					}
 				}
-			} else if (IsDirective("include")) { // {{.#include(foo)}}
+				break;
+			case Directive::Include:
 				if (includer) {
 					if (include_depth < 10) { // limit includer depth
 						auto t = includer(value); // load template
@@ -599,7 +596,8 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				} else {
 					fprintf(stderr, "include function is not defined\n");
 				}
-			} else if (IsDirective("jsx")) { // {{.#jsx(foo)}}
+				break;
+			case Directive::JSX:
 				if (includer) {
 					if (include_depth < 10) { // limit includer depth
 						if (values.size() >= 2) {
@@ -620,23 +618,36 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				} else {
 					fprintf(stderr, "include function is not defined\n");
 				}
-			} else {
-				if (Output(value)) {
-					// ok
-				} else if (IsDirective("if")) { // {{.#if.foo}}
+				break;
+			case Directive::If: // {{.#if.foo}}
+				{
 					bool f = atoi(value.data()) != 0;
 					condition_stack.push_back(f);
 					UpdateCondition();
-				} else if (IsDirective("ifn")) { // {{.#ifn.foo}} // if not
+				}
+				break;
+			case Directive::Ifn: // {{.#ifn.foo}} // if not
+				{
 					bool f = atoi(value.data()) == 0;
 					condition_stack.push_back(f);
 					UpdateCondition();
-				} else if (IsDirective("else")) { // {{.#else}}
-					condition = !condition;
-				} else if (IsDirective("end")) { // {{.#end}}
-					EatNL();
-					END();
 				}
+				break;
+			case Directive::Else: // {{.#else}}
+				condition = !condition;
+				break;
+			case Directive::End: // {{.#end}}
+				EatNL();
+				END();
+				break;
+			default:
+				if (key.empty()) { // {{.foo}}
+					if (is_html_mode()) { // if html mode, output html encoded value
+						html_encode(value, true);
+					}
+					outs(value);
+				}
+				break;
 			}
 		} else if (comment_depth == 0 && c == '&' && ptr + 1 < end && strchr("&.{}", ptr[1])) { // &. or &{ or &} or &&
 			ptr++;
