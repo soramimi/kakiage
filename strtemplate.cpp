@@ -448,7 +448,6 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				Put,
 				Define,
 				Include,
-				JSX,
 				If,
 				Ifn,
 				Else,
@@ -473,8 +472,6 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 					directive = Directive::Define;
 				} else if (s == "#include") {
 					directive = Directive::Include;
-				} else if (s == "#jsx") {
-					directive = Directive::JSX;
 				} else if (s == "#if") {
 					directive = Directive::If;
 				} else if (s == "#ifn") {
@@ -606,28 +603,6 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 							outs(trimmed(u));
 						} else {
 							fprintf(stderr, "include file '%s' not found\n", value.data());
-						}
-					} else {
-						fprintf(stderr, "include depth too deep\n");
-					}
-				} else {
-					fprintf(stderr, "include function is not defined\n");
-				}
-				break;
-			case Directive::JSX:
-				if (includer) {
-					if (include_depth < 10) { // limit includer depth
-						if (values.size() >= 2) {
-							auto el = trimmed(values[0]);
-							auto name = trimmed(values[1]);
-							auto t = includer((std::string)name); // load template
-							if (t) {
-								std::string u = generate(*t, map); // apply template
-								std::string s = "let " + (std::string)el + " = (" + (std::string)trimmed(u) + ')';
-								outs(s);
-							} else {
-								fprintf(stderr, "include file '%s' not found\n", value.data());
-							}
 						}
 					} else {
 						fprintf(stderr, "include depth too deep\n");

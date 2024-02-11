@@ -242,42 +242,38 @@ TestCase testcases[] = {
 	  , "14.3.142.77" },
 
 	// 8
-	{ "{{.#jsx(\"el\", \"test.txt\")}}"
-	  , "let el = (<span>{copyright}</span>)" },
-
-	// 9
 	{ "{{.#include.\"test.txt\"}}"
 	  , "<span>{copyright}</span>" },
 
-	// 10
+	// 9
 	{ "{{.#include(\"test.txt\")}}"
 	  , "<span>{copyright}</span>" },
 
-	// 11
+	// 10
 	{ "name = {{.name}}"
 	  , "name = Taro" },
 
-	// 12
+	// 11
 	{ "age = {{.age}}"
 	  , "age = 24" },
 
-	// 13
+	// 12
 	{ "{{.#raw.name}}"
 	  , "Taro" },
 
-	// 14
+	// 13
 	{ "{{.#raw(name)}}"
 	  , "Taro" },
 
-	// 15
+	// 14
 	{ "{{.`uname`}}"
 	  , "Linux" },
 
-	// 16
+	// 15
 	{ "{{.<test.txt>}}"
 	  , "<span>{copyright}</span>" },
 
-	// 17
+	// 16
 	{ "{{.$(SHELL)}}"
 	  , "/bin/bash" },
 };

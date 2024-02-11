@@ -6,7 +6,6 @@
 {{.#put.inet_checkip}}
 {{.#put("inet_resolve", "home.soramimi.jp")}}
 {{.#put("inet_checkip"}}
-{{.#jsx("el", "test.txt")}}
 {{.#include."test.txt"}}
 {{.#include("test.txt")}}
 name = {{.name}}
