@@ -146,10 +146,183 @@ std::optional<std::string> readfile(char const *path)
 	return std::string(vec.begin(), vec.end());
 }
 
+void parseConfigFile(char const *path, std::map<std::string, std::string> *map)
+{
+	map->clear();
+	auto rules = readfile(path);
+	if (!rules) {
+		fprintf(stderr, "Failed to open definition file: %s\n", path);
+	}
+	if (!rules->empty()){
+		char const *begin = rules->data();
+		char const *end = begin + rules->size();
+		char const *line = begin;
+		char const *endl = begin;
+		char const *eq = nullptr;
+		char const *comment = nullptr;
+		int linenum = 0;
+		while (endl < end) {
+			int c = endl < end ? (unsigned char)*endl : -1;
+			if (c == '\n' || c == '\r' || c == -1) {
+				char const *left = line;
+				char const *right = endl;
+				if (comment && comment < right) {
+					right = comment;
+				}
+				while (left < right && isspace((unsigned char)*left)) left++;
+				while (left < right && isspace((unsigned char)right[-1])) right--;
+				if (left < right) {
+					if (eq) {
+						std::string name(left, eq);
+						std::string value(eq + 1, right);
+						(*map)[name] = value;
+					} else {
+						std::string s(line, endl);
+						fprintf(stderr, "Syntax error (%d): %s\n", linenum + 1, s.c_str());
+					}
+				}
+				if (c < 0) break;
+				comment = nullptr;
+				eq = nullptr;
+				line = ++endl;
+				linenum++;
+			} else if (c == '=') {
+				if (!eq && !comment) {
+					eq = endl;
+				}
+				endl++;
+			} else if (c == '#' || c == ';') {
+				if (!comment) {
+					comment = endl;
+				}
+				endl++;
+			} else {
+				endl++;
+			}
+		}
+	}
+}
+
+struct TestCase {
+	char const *source;
+	char const *expected;
+};
+
+TestCase testcases[] = {
+	// 0
+	{ "{{.#url(<test.txt>)}}"
+	  , "%3Cspan%3E%7Bcopyright%7D%3C%2Fspan%3E" },
+
+	// 1
+	{ "{{.#url(\"<test.txt>\")}}"
+	  , "%3Ctest.txt%3E" },
+
+	// 2
+	{ "{{.#html(<test.txt>)}}"
+	  , "&lt;span&gt;{copyright}&lt;/span&gt;" },
+
+	// 3
+	{ "{{.#html(\"<test.txt>\")}}"
+	  , "&lt;test.txt&gt;" },
+
+	// 4
+	{ "{{.#put.inet_resolve(\"a.root-servers.net\")}}"
+	  , "198.41.0.4" },
+
+	// 5
+	{ "{{.#put.inet_checkip}}"
+	  , "14.3.142.77" },
+
+	// 6
+	{ "{{.#put(\"inet_resolve\", \"a.root-servers.net\")}}"
+	  , "198.41.0.4" },
+
+	// 7
+	{ "{{.#put(\"inet_checkip\"}}"
+	  , "14.3.142.77" },
+
+	// 8
+	{ "{{.#jsx(\"el\", \"test.txt\")}}"
+	  , "let el = (<span>{copyright}</span>)" },
+
+	// 9
+	{ "{{.#include.\"test.txt\"}}"
+	  , "<span>{copyright}</span>" },
+
+	// 10
+	{ "{{.#include(\"test.txt\")}}"
+	  , "<span>{copyright}</span>" },
+
+	// 11
+	{ "name = {{.name}}"
+	  , "name = Taro" },
+
+	// 12
+	{ "age = {{.age}}"
+	  , "age = 24" },
+
+	// 13
+	{ "{{.#raw.name}}"
+	  , "Taro" },
+
+	// 14
+	{ "{{.#raw(name)}}"
+	  , "Taro" },
+
+	// 15
+	{ "{{.`uname`}}"
+	  , "Linux" },
+
+	// 16
+	{ "{{.<test.txt>}}"
+	  , "<span>{copyright}</span>" },
+
+	// 17
+	{ "{{.$(SHELL)}}"
+	  , "/bin/bash" },
+};
+static const int testcase_count = sizeof(testcases) / sizeof(testcases[0]);
+
+strtemplate st;
+
+int testmain()
+{
+	std::string input_text;
+	std::map<std::string, std::string> map;
+	auto file = readfile("test.in");
+	if (!file) {
+		fprintf(stderr, "Failed to open input file: test.in\n");
+		return 1;
+	}
+
+	input_text = *file;
+	map.clear();
+	parseConfigFile("test.ka", &map);
+
+	int passed = 0;
+	int failed = 0;
+	for (int i = 0; i < testcase_count; i++) {
+		auto source = testcases[i].source;
+		fprintf(stderr, "[%d] %s\n", i, source);
+		std::string result = st.generate(source, map);
+		if (result == testcases[i].expected) {
+			passed++;
+		} else {
+			fprintf(stderr, "Test failed: %s\n", source);
+			fprintf(stderr, "  expected: %s\n", testcases[i].expected);
+			fprintf(stderr, "    result: %s\n", result.c_str());
+			failed++;
+		}
+	}
+	fprintf(stderr, "Passed: %d\n", passed);
+	fprintf(stderr, "Failed: %d\n", failed);
+
+	return 0;
+}
+
 //
 int main(int argc, char **argv)
 {
-	strtemplate st;
 	st.set_html_mode(false);
 
 	std::string source_path;
@@ -157,57 +330,10 @@ int main(int argc, char **argv)
 	std::string input_text;
 
 	std::map<std::string, std::string> map;
-	auto ParseConfigFile = [&](char const *path){
-		auto rules = readfile(path);
-		if (rules && !rules->empty()){
-			char const *begin = rules->data();
-			char const *end = begin + rules->size();
-			char const *line = begin;
-			char const *endl = begin;
-			char const *eq = nullptr;
-			char const *comment = nullptr;
-			int linenum = 0;
-			while (endl < end) {
-				int c = endl < end ? (unsigned char)*endl : -1;
-				if (c == '\n' || c == '\r' || c == -1) {
-					char const *left = line;
-					char const *right = endl;
-					if (comment && comment < right) {
-						right = comment;
-					}
-					while (left < right && isspace((unsigned char)*left)) left++;
-					while (left < right && isspace((unsigned char)right[-1])) right--;
-					if (left < right) {
-						if (eq) {
-							std::string name(left, eq);
-							std::string value(eq + 1, right);
-							map[name] = value;
-						} else {
-							std::string s(line, endl);
-							fprintf(stderr, "Syntax error (%d): %s\n", linenum + 1, s.c_str());
-						}
-					}
-					if (c < 0) break;
-					comment = nullptr;
-					eq = nullptr;
-					line = ++endl;
-					linenum++;
-				} else if (c == '=') {
-					if (!eq && !comment) {
-						eq = endl;
-					}
-					endl++;
-				} else if (c == '#' || c == ';') {
-					comment = endl;
-					endl++;
-				} else {
-					endl++;
-				}
-			}
-		}
-	};
 
 	bool help = false;
+	bool test = false;
+
 	int i = 1;
 	while (i < argc) {
 		char const *arg = argv[i++];
@@ -219,7 +345,7 @@ int main(int argc, char **argv)
 				help = true;
 			} else if (IsArg("-d")) {
 				if (i < argc) {
-					ParseConfigFile(argv[i++]);
+					parseConfigFile(argv[i++], &map);
 				} else {
 					fprintf(stderr, "Too few arguments\n");
 				}
@@ -267,6 +393,8 @@ int main(int argc, char **argv)
 				}
 			} else if (IsArg("--html")) {
 				st.set_html_mode(true);
+			} else if (IsArg("--test")) {
+				test = true;
 			} else {
 				fprintf(stderr, "Unknown option: %s\n", arg);
 			}
@@ -277,6 +405,25 @@ int main(int argc, char **argv)
 				fprintf(stderr, "Too many arguments\n");
 			}
 		}
+	}
+
+	st.evaluator = [&](std::string const &name, std::vector<std::string> const &args)->std::string{
+		if (name == "inet_resolve") { // inet_resolve("example.com")
+			if (args.size() != 1) return {};
+			return inet_resolve(args[0]);
+		}
+		if (name == "inet_checkip") { // my global ip address
+			(void)args;
+			return WebClient::checkip();
+		}
+		return {};
+	};
+	st.includer = [&](std::string const &name){
+		return readfile(name.data());
+	};
+
+	if (test) {
+		return testmain();
 	}
 
 	if (source_path.empty()) {
@@ -305,21 +452,6 @@ int main(int argc, char **argv)
 		fprintf(stderr, "  --html\n");
 		return 0;
 	}
-
-	st.evaluator = [&](std::string const &name, std::vector<std::string> const &args)->std::string{
-		if (name == "inet_resolve") { // inet_resolve("example.com")
-			if (args.size() != 1) return {};
-			return inet_resolve(args[0]);
-		}
-		if (name == "inet_checkip") { // my global ip address
-			(void)args;
-			return WebClient::checkip();
-		}
-		return {};
-	};
-	st.includer = [&](std::string const &name){
-		return readfile(name.data());
-	};
 
 	std::string result = st.generate(input_text, map);
 

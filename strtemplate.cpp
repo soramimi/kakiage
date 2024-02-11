@@ -47,6 +47,13 @@ std::string to_string(std::vector<std::vector<char>> const &list)
 	return out;
 }
 
+std::vector<char> to_vector(std::string_view const &view)
+{
+	std::vector<char> out;
+	out.insert(out.end(), view.data(), view.data() + view.size());
+	return out;
+}
+
 size_t find_any(const std::string_view &str, const char *chrs)
 {
 	size_t i = 0;
@@ -260,12 +267,18 @@ std::vector<std::vector<char>> strtemplate::parse_string(char const *begin, char
 			}
 			continue;
 		}
-		if (c == '\"' || c == '\'' || c == '`' || c == '<') {
+		if (c == '\"' || c == '\'' || c == '`' || c == '<' || c == '[') {
 			right++;
 			char e = c;
 			if (c == '<') {
 				e = '>';
+			} else if (c == '[') {
+				e = ']';
+				fprintf(stderr, "square bracket is reserved\n");
+			} else if (c == '\'') {
+				fprintf(stderr, "single quote is reserved\n");
 			}
+
 			std::string s = string_literal(right, end, e, &right);
 			if (right < end) {
 				right++;
@@ -322,7 +335,11 @@ std::vector<std::vector<char>> strtemplate::parse_string(char const *begin, char
 			}
 			convert = false;
 		} else {
-			out.back().push_back(c);
+			if (isspace((unsigned char)c) && out.back().empty()) {
+				// skip leading spaces
+			} else {
+				out.back().push_back(c);
+			}
 			right++;
 		}
 	}
@@ -601,8 +618,8 @@ std::string strtemplate::generate(const std::string &source, const std::map<std:
 				if (includer) {
 					if (include_depth < 10) { // limit includer depth
 						if (values.size() >= 2) {
-							auto name = trimmed(values[0]);
-							auto el = trimmed(values[1]);
+							auto el = trimmed(values[0]);
+							auto name = trimmed(values[1]);
 							auto t = includer((std::string)name); // load template
 							if (t) {
 								std::string u = generate(*t, map); // apply template

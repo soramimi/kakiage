@@ -46,5 +46,7 @@ win32 {
 }
 
 DISTFILES += \
-	a.in \
-	a.ka
+	test.in \
+	test.txt \
+	test.ka \
+	test.sh

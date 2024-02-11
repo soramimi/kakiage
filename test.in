@@ -1,0 +1,23 @@
+{{.#url(<test.txt>)}}
+{{.#url("<test.txt>")}}
+{{.#html(<test.txt>)}}
+{{.#html("<test.txt>")}}
+{{.#put.inet_resolve("home.soramimi.jp")}}
+{{.#put.inet_checkip}}
+{{.#put("inet_resolve", "home.soramimi.jp")}}
+{{.#put("inet_checkip"}}
+{{.#jsx("el", "test.txt")}}
+{{.#include."test.txt"}}
+{{.#include("test.txt")}}
+name = {{.name}}
+age = {{.age}}
+{{.#raw.name}}
+{{.#raw(name)}}
+{{.`uname -a`}}
+{{.<test.txt>}}
+{{.$(SHELL)}}
+{{.%("format: %s", <test.txt>)}}
+{{.#define.a.$(SHELL)}}
+{{.#put("a")}}
+{{.#put.a}}
+{{.%("my shell is %s", $(SHELL))}}
