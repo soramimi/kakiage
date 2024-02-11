@@ -1,5 +1,5 @@
 #include "htmlencode.h"
-#include "strtemplate.h"
+#include "kakiage.h"
 #include "urlencode.h"
 #include <cstring>
 #include <numeric>
@@ -103,7 +103,7 @@ static inline std::vector<std::string_view> split_internal(char const *begin, ch
 		if (is_separator(c) || c < 0) {
 			std::string_view line(left, ptr - left);
 			if (opt.trim_spaces) {
-				line = strtemplate::trimmed(line);
+				line = kakiage::trimmed(line);
 			}
 			if (opt.keep_empty_lines || !line.empty()) {
 				out.push_back(line);
@@ -165,7 +165,7 @@ std::optional<std::string> run(std::string const &command)
 } // namespace
 
 
-std::string_view strtemplate::trimmed(const std::string_view &s)
+std::string_view kakiage::trimmed(const std::string_view &s)
 {
 	size_t i = 0;
 	size_t j = s.size();
@@ -175,7 +175,7 @@ std::string_view strtemplate::trimmed(const std::string_view &s)
 	return s.substr(i, j - i);
 }
 
-std::string strtemplate::string_literal(char const *begin, char const *end, char stop, char const **next)
+std::string kakiage::string_literal(char const *begin, char const *end, char stop, char const **next)
 {
 	std::vector<char> vec;
 	vec.reserve(256);
@@ -213,7 +213,7 @@ std::string strtemplate::string_literal(char const *begin, char const *end, char
 	return std::string(to_string(vec));
 }
 
-std::vector<std::vector<char>> strtemplate::parse_string(char const *begin, char const *end, char const *sep, char const *stop, std::map<std::string, std::string> const *map, char const **next)
+std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char const *end, char const *sep, char const *stop, std::map<std::string, std::string> const *map, char const **next)
 {
 	*next = end;
 
@@ -352,7 +352,7 @@ std::vector<std::vector<char>> strtemplate::parse_string(char const *begin, char
  * @param map 置換マップ
  * @return ページテキスト
  */
-std::string strtemplate::generate(const std::string &source, const std::map<std::string, std::string> &map, int include_depth)
+std::string kakiage::generate(const std::string &source, const std::map<std::string, std::string> &map, int include_depth)
 {
 	std::map<std::string, std::string> macro;
 	defines.push_back(&macro);

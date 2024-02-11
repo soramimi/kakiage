@@ -1,5 +1,5 @@
 
-#include "strtemplate.h"
+#include "kakiage.h"
 #include <map>
 #include <stdio.h>
 #include <cstring>
@@ -279,7 +279,7 @@ TestCase testcases[] = {
 };
 static const int testcase_count = sizeof(testcases) / sizeof(testcases[0]);
 
-strtemplate st;
+kakiage st;
 
 int testmain()
 {

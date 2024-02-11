@@ -21,18 +21,18 @@ win32:msvc {
 SOURCES += \
         base64.cpp \
         htmlencode.cpp \
+        kakiage.cpp \
         main.cpp \
         misc.cpp \
-        strtemplate.cpp \
         urlencode.cpp \
         webclient.cpp
 
 HEADERS += \
 	base64.h \
 	htmlencode.h \
+	kakiage.h \
 	misc.h \
 	strformat.h \
-	strtemplate.h \
 	urlencode.h \
 	webclient.h
 

@@ -1,5 +1,5 @@
-#ifndef STRTEMPLATE_H
-#define STRTEMPLATE_H
+#ifndef KAKIAGE_H
+#define KAKIAGE_H
 
 #include <functional>
 #include <map>
@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-class strtemplate {
+class kakiage {
 private:
 	bool html_mode_ = true;
 	std::vector<std::vector<char> > parse_string(const char *begin, const char *end, const char *sep, const char *stop, const std::map<std::string, std::string> *map, const char **next);
@@ -33,4 +33,4 @@ public:
 	static std::string_view trimmed(const std::string_view &s);
 };
 
-#endif // STRTEMPLATE_H
+#endif // KAKIAGE_H
