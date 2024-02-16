@@ -2,13 +2,16 @@
 TARGET := kakiage
 
 CXXFLAGS := -O3 -I..
-LIBS := -lcurl
+LIBS := -lssl -lcrypto
 
 SOURCES := \
 	htmlencode.cpp \
-	strtemplate.cpp \
+	kakiage.cpp \
 	urlencode.cpp \
 	UnixProcess.cpp \
+	webclient.cpp \
+	base64.cpp \
+	htmlencode.cpp \
 	main.cpp
 
 OBJECTS := $(SOURCES:%.cpp=%.o)
