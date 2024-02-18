@@ -429,7 +429,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 			ptr += 3;
 			if (ptr[0] == '}' && ptr[1] == '}') {
 				// {{.}}
-				ptr += 5;
+				ptr += 2;
 				EatNL();
 				END();
 				continue;
