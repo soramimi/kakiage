@@ -23,7 +23,6 @@ SOURCES += \
         htmlencode.cpp \
         kakiage.cpp \
         main.cpp \
-        misc.cpp \
         urlencode.cpp \
         webclient.cpp
 
@@ -31,7 +30,6 @@ HEADERS += \
 	base64.h \
 	htmlencode.h \
 	kakiage.h \
-	misc.h \
 	strformat.h \
 	urlencode.h \
 	webclient.h
