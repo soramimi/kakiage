@@ -15,6 +15,11 @@
 
 namespace {
 
+static bool issymf(int c)
+{
+	return isalpha((unsigned char)c) || c == '_';
+}
+
 static bool issym(int c)
 {
 	return isalnum((unsigned char)c) || c == '_';
@@ -213,7 +218,7 @@ std::string kakiage::string_literal(char const *begin, char const *end, char sto
 	return std::string(to_string(vec));
 }
 
-std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char const *end, char const *sep, char const *stop, std::map<std::string, std::string> const *map, char const **next)
+std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char const *end, char const *sep, char const *stop, bool raw, std::map<std::string, std::string> const *map, char const **next)
 {
 	*next = end;
 
@@ -225,12 +230,14 @@ std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char con
 			if (map) {
 				std::vector<char> const &v = out.back();
 				std::string s(trimmed(std::string_view(v.data(), v.size())));
-				auto it = map->find(s);
-				if (it != map->end()) {
-					s = it->second;
-				} else {
-					s = '?' + s + '?';
-					fprintf(stderr, "undefined symbol '%s'\n", s.data());
+				if (issymf(s[0])) {
+					auto it = map->find(s);
+					if (it != map->end()) {
+						s = it->second;
+					} else {
+						s = '?' + s + '?';
+						fprintf(stderr, "undefined symbol '%s'\n", s.data());
+					}
 				}
 				out.back().clear();
 				out.back().insert(out.back().end(), s.begin(), s.end());
@@ -257,7 +264,7 @@ std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char con
 			out.push_back({});
 			out.back().reserve(256);
 			if (c == '(') {
-				auto list = parse_string(right, end, nullptr, ")", nullptr, &right);
+				auto list = parse_string(right, end, nullptr, ")", false, nullptr, &right);
 				for (auto const &vec : list) {
 					out.back().insert(out.back().end(), vec.begin(), vec.end());
 				}
@@ -265,6 +272,26 @@ std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char con
 					right++;
 				}
 			}
+			continue;
+		}
+		if (raw) {
+			if (right + 1 < end && right[0] == '{' && right[1] == '{') {
+				right += 2;
+				auto list = parse_string(right, end, nullptr, "}", true, map, &right);
+				if (right + 1 < end && right[0] == '}' && right[1] == '}') {
+					right += 2;
+					std::string v = "{{" + to_string(list) + "}}";
+					append(&out.back(), v);
+				}
+			} else {
+				if (isspace((unsigned char)c) && out.back().empty()) {
+					// skip leading spaces
+				} else {
+					out.back().push_back(c);
+				}
+				right++;
+			}
+			convert = false;
 			continue;
 		}
 		if (c == '\"' || c == '\'' || c == '`' || c == '<' || c == '[') {
@@ -309,7 +336,7 @@ std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char con
 			convert = false;
 		} else if (right + 1 < end && (c == '$' || c == '%') && right[1] == '(') { // $(ENV) or %(format, ...)
 			right += 2;
-			auto list = parse_string(right, end, ",", ")", nullptr, &right);
+			auto list = parse_string(right, end, ",", ")", false, nullptr, &right);
 			if (right < end) {
 				right++;
 			}
@@ -488,7 +515,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 
 			auto ParseSymbol = [&](){
 				size_t i = 0;
-				while (ptr + i < end && issym(ptr[i])) {
+				while (ptr + i < end && ((i == 0) ? issymf(ptr[i]) : issym(ptr[i]))) {
 					i++;
 				}
 				std::string s(ptr, i);
@@ -511,14 +538,21 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 							key = ParseSymbol();
 						}
 					}
-					if (*ptr == '.') {
-						ptr++;
-						vec = parse_string(ptr, end, nullptr, "}", &map, &ptr);
-					} else if (*ptr == '(') {
-						ptr++;
-						vec = parse_string(ptr, end, ",", ")}", &map, &ptr);
-						if (ptr < end && *ptr == ')') {
+					if (ptr < end) {
+						if (*ptr == '(') {
 							ptr++;
+							vec = parse_string(ptr, end, ",", ")}", false, &map, &ptr);
+							if (ptr < end && *ptr == ')') {
+								ptr++;
+							}
+						} else if (directive == Directive::Define) {
+							if (*ptr == '=' || isspace((unsigned char)*ptr)) {
+								ptr++;
+								vec = parse_string(ptr, end, nullptr, "}", true, nullptr, &ptr);
+							}
+						} else if (*ptr == '.') {
+							ptr++;
+							vec = parse_string(ptr, end, nullptr, "}", false, &map, &ptr);
 						}
 					}
 					if (keyflag) {
@@ -529,7 +563,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 					}
 				}
 			} else {
-				vec = parse_string(ptr, end, nullptr, "}", &map, &ptr);
+				vec = parse_string(ptr, end, nullptr, "}", false, &map, &ptr);
 			}
 			for (auto const &vec : vec) {
 				values.emplace_back(to_string(vec));
@@ -572,25 +606,24 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				break;
 			case Directive::Put:
 				{
+					std::string atext;
 					auto text = FindMacro(key);
 					if (text) {
-						std::string u = generate(*text, map);
+						atext = *text;
+					}
+					std::optional<std::string> t;
+					if (evaluator) {
+						std::vector<std::string> args;
+						for (size_t i = 0; i < values.size(); i++) {
+							args.emplace_back(values[i]);
+						}
+						t = evaluator(key, atext, args);
+					}
+					if (t) {
+						std::string u = generate(*t, map);
 						outs(u);
 					} else {
-						std::optional<std::string> t;
-						if (evaluator) {
-							std::vector<std::string> args;
-							for (size_t i = 0; i < values.size(); i++) {
-								args.emplace_back(values[i]);
-							}
-							t = evaluator(key, args);
-						}
-						if (t) {
-							std::string u = generate(*t, map);
-							outs(u);
-						} else {
-							fprintf(stderr, "undefined macro '%s'\n", value.data());
-						}
+						fprintf(stderr, "undefined macro '%s'\n", value.data());
 					}
 				}
 				break;
