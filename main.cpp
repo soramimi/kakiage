@@ -209,37 +209,38 @@ struct TestCase {
 };
 
 TestCase testcases[] = {
+
 	// 0
-	{ "{{.#url(<test.txt>)}}"
-	  , "%3Cspan%3E%7Bcopyright%7D%3C%2Fspan%3E" },
-
-	// 1
-	{ "{{.#url(\"<test.txt>\")}}"
-	  , "%3Ctest.txt%3E" },
-
-	// 2
-	{ "{{.#html(<test.txt>)}}"
-	  , "&lt;span&gt;{copyright}&lt;/span&gt;" },
-
-	// 3
-	{ "{{.#html(\"<test.txt>\")}}"
-	  , "&lt;test.txt&gt;" },
-
-	// 4
-	{ "{{.#put.inet_resolve(\"a.root-servers.net\")}}"
-	  , "198.41.0.4" },
-
-	// 5
 	{ "{{.#put.inet_checkip}}"
 	  , "14.3.142.77" },
 
-	// 6
+	// 1
+	{ "{{.#put('inet_checkip'}}"
+	  , "14.3.142.77" },
+
+	// 2
+	{ "{{.#put.inet_resolve(\"a.root-servers.net\")}}"
+	  , "198.41.0.4" },
+
+	// 3
 	{ "{{.#put(\"inet_resolve\", \"a.root-servers.net\")}}"
 	  , "198.41.0.4" },
 
+	// 4
+	{ "{{.#url(<test.txt>)}}"
+	  , "%3Cspan%3E%7Bcopyright%7D%3C%2Fspan%3E" },
+
+	// 5
+	{ "{{.#url(\"<test.txt>\")}}"
+	  , "%3Ctest.txt%3E" },
+
+	// 6
+	{ "{{.#html(<test.txt>)}}"
+	  , "&lt;span&gt;{copyright}&lt;/span&gt;" },
+
 	// 7
-	{ "{{.#put(\"inet_checkip\"}}"
-	  , "14.3.142.77" },
+	{ "{{.#html(\"<test.txt>\")}}"
+	  , "&lt;test.txt&gt;" },
 
 	// 8
 	{ "{{.#include.\"test.txt\"}}"
@@ -276,6 +277,86 @@ TestCase testcases[] = {
 	// 16
 	{ "{{.$(SHELL)}}"
 	  , "/bin/bash" },
+
+	// 17
+	{ "{{.#define.hoge=fuga}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 18
+	{ "{{.#define.hoge fuga}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 19
+	{ "{{.#define.hoge  fuga}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 20
+	{ "{{.#define('hoge','fuga')}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 21
+	{ "{{.#define('hoge', 'fuga')}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 22
+	{ "{{.#define(\"hoge\",\"fuga\")}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 23
+	{ "{{.#define(\"hoge\", \"fuga\")}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 24
+	{ "{{.#define.hoge=fuga}}{{.#put('hoge')}}"
+	  , "fuga" },
+
+	// 25
+	{ "{{.#define.hoge fuga}}{{.#put(\"hoge\")}}"
+	  , "fuga" },
+
+	// 26
+	{ "{{.#define.hoge fuga}}{{.#put(hoge)}}" // put(hoge) は間違い。put('hoge') が正しい。
+	  , "?hoge?" },
+
+	// 27
+	{ "{{.#define.hoge={{.'fuga'}}}}{{.#put.hoge}}"
+	  , "{{.'fuga'}}" },
+
+	// 28
+	{ "{{.#define.hoge {{.'{{.'piyo}}'}}}}{{.#put.hoge}}"
+	  , "{{.'{{.'piyo}}'}}" },
+
+	// 29
+	{ "({{.#if.1}}foo{{.#else}}bar{{.}})"
+	  , "(foo)" },
+
+	// 30
+	{ "({{.#if.0}}foo{{.#else}}bar{{.}})"
+	  , "(bar)" },
+
+	// 31
+	{ "({{.#if.1}}foo{{.#else}}bar{{.#end}})" // #end は冗長だけど正しい文法
+	  , "(foo)" },
+
+	// 32
+	{ "({{.#if.0}}foo{{.#else}}bar{{.#end}})"
+	  , "(bar)" },
+
+	// 33
+	{ "(&&.{};)"
+	  , "(&.{})" },
+
+	// 34
+	{ "(&&&&&;)"
+	  , "(&&&&)" },
+
+	// 35
+	{ "a&{;b&{{;c&{{{;d"
+	  , "a{b{{c{{{d" },
+
+	// 36
+	{ ";a&{{&b.}};;c;"
+	  , ";a{{&b.}};c;" },
 };
 static const int testcase_count = sizeof(testcases) / sizeof(testcases[0]);
 
@@ -403,7 +484,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	st.evaluator = [&](std::string const &name, std::vector<std::string> const &args)->std::string{
+	st.evaluator = [&](std::string const &name, std::string const &text, std::vector<std::string> const &args)->std::optional<std::string>{
 		if (name == "inet_resolve") { // inet_resolve("example.com")
 			if (args.size() != 1) return {};
 			return inet_resolve(args[0]);
@@ -412,10 +493,13 @@ int main(int argc, char **argv)
 			(void)args;
 			return WebClient::checkip();
 		}
-		return {};
+		return std::nullopt;
 	};
-	st.includer = [&](std::string const &name){
-		return readfile(name.data());
+	st.includer = [&](std::string const &name)->std::optional<std::string>{
+		if (name == "test.txt") {
+			return "<span>{copyright}</span>";
+		}
+		return std::nullopt;
 	};
 
 	if (test) {

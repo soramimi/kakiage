@@ -302,8 +302,6 @@ std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char con
 			} else if (c == '[') {
 				e = ']';
 				fprintf(stderr, "square bracket is reserved\n");
-			} else if (c == '\'') {
-				fprintf(stderr, "single quote is reserved\n");
 			}
 
 			std::string s = string_literal(right, end, e, &right);
@@ -437,19 +435,16 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 			}
 		};
 		auto EatNL = [&](){ // 改行を読み飛ばす
-			while (ptr < end) {
-				if (*ptr == '\r') {
-					ptr++;
-					if (ptr < end && *ptr == '\n') {
-						ptr++;
-					}
-					break;
-				}
-				if (*ptr == '\n') {
-					ptr++;
-					break;
-				}
+			if (ptr < end && *ptr == '\r') {
 				ptr++;
+				if (ptr < end && *ptr == '\n') {
+					ptr++;
+				}
+				return;
+			}
+			if (ptr < end && *ptr == '\n') {
+				ptr++;
+				return;
 			}
 		};
 		if (c == '{' && ptr + 4 < end && ptr[1] == '{' && ptr[2] == '.') {
@@ -606,25 +601,50 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				break;
 			case Directive::Put:
 				{
-					std::string atext;
-					auto text = FindMacro(key);
-					if (text) {
-						atext = *text;
+#if 1
+				if (evaluator) {
+					std::vector<std::string> args;
+					for (size_t i = 0; i < values.size(); i++) {
+						args.emplace_back(values[i]);
 					}
-					std::optional<std::string> t;
-					if (evaluator) {
-						std::vector<std::string> args;
-						for (size_t i = 0; i < values.size(); i++) {
-							args.emplace_back(values[i]);
-						}
-						t = evaluator(key, atext, args);
-					}
+					auto t = evaluator(key, {}, args);
 					if (t) {
 						std::string u = generate(*t, map);
 						outs(u);
-					} else {
-						fprintf(stderr, "undefined macro '%s'\n", value.data());
+						break;
 					}
+				}
+				auto text = FindMacro(key);
+				if (text) {
+					outs(*text);
+					break;
+				}
+				{
+					fprintf(stderr, "undefined macro '%s'\n", key.data());
+					outs(key);
+				}
+				break;
+#else
+				std::string atext;
+				auto text = FindMacro(key);
+				if (text) {
+					atext = *text;
+				}
+				std::optional<std::string> t;
+				if (evaluator) {
+					std::vector<std::string> args;
+					for (size_t i = 0; i < values.size(); i++) {
+						args.emplace_back(values[i]);
+					}
+					t = evaluator(key, atext, args);
+				}
+				if (t) {
+					std::string u = generate(*t, map);
+					outs(u);
+				} else {
+					fprintf(stderr, "undefined macro '%s'\n", value.data());
+				}
+#endif
 				}
 				break;
 			case Directive::Include:
