@@ -218,7 +218,37 @@ std::string kakiage::string_literal(char const *begin, char const *end, char sto
 	return std::string(to_string(vec));
 }
 
-std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char const *end, char const *sep, char const *stop, bool raw, std::map<std::string, std::string> const *map, char const **next)
+static void parse_string_raw(char const *begin, char const *end, char const **next, std::vector<char> *out)
+{
+	*next = end;
+	char const *right = begin;
+	while (right < end) {
+		char c = right[0];
+		if (c == '}') {
+			*next = right;
+			break;
+		}
+		if (right + 1 < end && right[0] == '{' && right[1] == '{') {
+			right += 2;
+			std::vector<char> v;
+			parse_string_raw(right, end, &right, &v);
+			if (right + 1 < end && right[0] == '}' && right[1] == '}') {
+				right += 2;
+				std::string s = "{{" + std::string(to_string(v)) + "}}";
+				append(out, s);
+			}
+		} else {
+			if (isspace((unsigned char)c) && out->empty()) {
+				// skip leading spaces
+			} else {
+				out->push_back(c);
+			}
+			right++;
+		}
+	}
+}
+
+std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char const *end, char const *sep, char const *stop, std::map<std::string, std::string> const *map, char const **next)
 {
 	*next = end;
 
@@ -264,7 +294,7 @@ std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char con
 			out.push_back({});
 			out.back().reserve(256);
 			if (c == '(') {
-				auto list = parse_string(right, end, nullptr, ")", false, nullptr, &right);
+				auto list = parse_string(right, end, nullptr, ")", nullptr, &right);
 				for (auto const &vec : list) {
 					out.back().insert(out.back().end(), vec.begin(), vec.end());
 				}
@@ -272,26 +302,6 @@ std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char con
 					right++;
 				}
 			}
-			continue;
-		}
-		if (raw) {
-			if (right + 1 < end && right[0] == '{' && right[1] == '{') {
-				right += 2;
-				auto list = parse_string(right, end, nullptr, "}", true, map, &right);
-				if (right + 1 < end && right[0] == '}' && right[1] == '}') {
-					right += 2;
-					std::string v = "{{" + to_string(list) + "}}";
-					append(&out.back(), v);
-				}
-			} else {
-				if (isspace((unsigned char)c) && out.back().empty()) {
-					// skip leading spaces
-				} else {
-					out.back().push_back(c);
-				}
-				right++;
-			}
-			convert = false;
 			continue;
 		}
 		if (c == '\"' || c == '\'' || c == '`' || c == '<' || c == '[') {
@@ -334,7 +344,7 @@ std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char con
 			convert = false;
 		} else if (right + 1 < end && (c == '$' || c == '%') && right[1] == '(') { // $(ENV) or %(format, ...)
 			right += 2;
-			auto list = parse_string(right, end, ",", ")", false, nullptr, &right);
+			auto list = parse_string(right, end, ",", ")", nullptr, &right);
 			if (right < end) {
 				right++;
 			}
@@ -536,18 +546,20 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 					if (ptr < end) {
 						if (*ptr == '(') {
 							ptr++;
-							vec = parse_string(ptr, end, ",", ")}", false, &map, &ptr);
+							vec = parse_string(ptr, end, ",", ")}", &map, &ptr);
 							if (ptr < end && *ptr == ')') {
 								ptr++;
 							}
 						} else if (directive == Directive::Define) {
 							if (*ptr == '=' || isspace((unsigned char)*ptr)) {
 								ptr++;
-								vec = parse_string(ptr, end, nullptr, "}", true, nullptr, &ptr);
+								std::vector<char> v;
+								parse_string_raw(ptr, end, &ptr, &v);
+								vec.push_back(v);
 							}
 						} else if (*ptr == '.') {
 							ptr++;
-							vec = parse_string(ptr, end, nullptr, "}", false, &map, &ptr);
+							vec = parse_string(ptr, end, nullptr, "}", &map, &ptr);
 						}
 					}
 					if (keyflag) {
@@ -558,7 +570,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 					}
 				}
 			} else {
-				vec = parse_string(ptr, end, nullptr, "}", false, &map, &ptr);
+				vec = parse_string(ptr, end, nullptr, "}", &map, &ptr);
 			}
 			for (auto const &vec : vec) {
 				values.emplace_back(to_string(vec));
