@@ -211,152 +211,169 @@ struct TestCase {
 TestCase testcases[] = {
 
 	// 0
-	{ "{{.#put.inet_checkip}}"
-	  , "14.3.142.77" },
-
-	// 1
-	{ "{{.#put('inet_checkip'}}"
-	  , "14.3.142.77" },
-
-	// 2
-	{ "{{.#put.inet_resolve(\"a.root-servers.net\")}}"
-	  , "198.41.0.4" },
-
-	// 3
-	{ "{{.#put(\"inet_resolve\", \"a.root-servers.net\")}}"
-	  , "198.41.0.4" },
-
-	// 4
-	{ "{{.#url(<test.txt>)}}"
-	  , "%3Cspan%3E%7Bcopyright%7D%3C%2Fspan%3E" },
-
-	// 5
-	{ "{{.#url(\"<test.txt>\")}}"
-	  , "%3Ctest.txt%3E" },
-
-	// 6
-	{ "{{.#html(<test.txt>)}}"
-	  , "&lt;span&gt;{copyright}&lt;/span&gt;" },
-
-	// 7
-	{ "{{.#html(\"<test.txt>\")}}"
-	  , "&lt;test.txt&gt;" },
-
-	// 8
-	{ "{{.#include.\"test.txt\"}}"
-	  , "<span>{copyright}</span>" },
-
-	// 9
-	{ "{{.#include(\"test.txt\")}}"
-	  , "<span>{copyright}</span>" },
-
-	// 10
-	{ "name = {{.name}}"
-	  , "name = Taro" },
-
-	// 11
-	{ "age = {{.age}}"
-	  , "age = 24" },
-
-	// 12
-	{ "{{.#raw.name}}"
-	  , "Taro" },
-
-	// 13
-	{ "{{.#raw(name)}}"
-	  , "Taro" },
-
-	// 14
-	{ "{{.`uname`}}"
-	  , "Linux" },
-
-	// 15
-	{ "{{.<test.txt>}}"
-	  , "<span>{copyright}</span>" },
-
-	// 16
-	{ "{{.$(SHELL)}}"
-	  , "/bin/bash" },
-
-	// 17
-	{ "{{.#define.hoge=fuga}}{{.#put.hoge}}"
-	  , "fuga" },
-
-	// 18
-	{ "{{.#define.hoge fuga}}{{.#put.hoge}}"
-	  , "fuga" },
-
-	// 19
-	{ "{{.#define.hoge  fuga}}{{.#put.hoge}}"
-	  , "fuga" },
-
-	// 20
-	{ "{{.#define('hoge','fuga')}}{{.#put.hoge}}"
-	  , "fuga" },
-
-	// 21
-	{ "{{.#define('hoge', 'fuga')}}{{.#put.hoge}}"
-	  , "fuga" },
-
-	// 22
-	{ "{{.#define(\"hoge\",\"fuga\")}}{{.#put.hoge}}"
-	  , "fuga" },
-
-	// 23
-	{ "{{.#define(\"hoge\", \"fuga\")}}{{.#put.hoge}}"
-	  , "fuga" },
-
-	// 24
-	{ "{{.#define.hoge=fuga}}{{.#put('hoge')}}"
-	  , "fuga" },
-
-	// 25
-	{ "{{.#define.hoge fuga}}{{.#put(\"hoge\")}}"
-	  , "fuga" },
-
-	// 26
-	{ "{{.#define.hoge fuga}}{{.#put(hoge)}}" // put(hoge) は間違い。put('hoge') が正しい。
-	  , "?hoge?" },
-
-	// 27
-	{ "{{.#define.hoge={{.'fuga'}}}}{{.#put.hoge}}"
-	  , "{{.'fuga'}}" },
-
-	// 28
-	{ "{{.#define.hoge {{.'{{.'piyo}}'}}}}{{.#put.hoge}}"
-	  , "{{.'{{.'piyo}}'}}" },
-
-	// 29
-	{ "({{.#if.1}}foo{{.#else}}bar{{.}})"
-	  , "(foo)" },
-
-	// 30
-	{ "({{.#if.0}}foo{{.#else}}bar{{.}})"
-	  , "(bar)" },
-
-	// 31
-	{ "({{.#if.1}}foo{{.#else}}bar{{.#end}})" // #end は冗長だけど正しい文法
-	  , "(foo)" },
-
-	// 32
-	{ "({{.#if.0}}foo{{.#else}}bar{{.#end}})"
-	  , "(bar)" },
-
-	// 33
 	{ "(&&.{};)"
 	  , "(&.{})" },
 
-	// 34
+	// 1
 	{ "(&&&&&;)"
 	  , "(&&&&)" },
 
-	// 35
+	// 2
 	{ "a&{;b&{{;c&{{{;d"
 	  , "a{b{{c{{{d" },
 
-	// 36
+	// 3
 	{ ";a&{{&b.}};;c;"
 	  , ";a{{&b.}};c;" },
+
+	// 4
+	{ "{{.#put.inet_checkip}}"
+	  , "14.3.142.77" },
+
+	// 5
+	{ "{{.#put('inet_checkip'}}"
+	  , "14.3.142.77" },
+
+	// 6
+	{ "{{.#put.inet_resolve(\"a.root-servers.net\")}}"
+	  , "198.41.0.4" },
+
+	// 7
+	{ "{{.#put(\"inet_resolve\", \"a.root-servers.net\")}}"
+	  , "198.41.0.4" },
+
+	// 8
+	{ "{{.#url(<test.txt>)}}"
+	  , "%3Cspan%3E%7Bcopyright%7D%3C%2Fspan%3E" },
+
+	// 9
+	{ "{{.#url(\"<test.txt>\")}}"
+	  , "%3Ctest.txt%3E" },
+
+	// 10
+	{ "{{.#html(<test.txt>)}}"
+	  , "&lt;span&gt;{copyright}&lt;/span&gt;" },
+
+	// 11
+	{ "{{.#html(\"<test.txt>\")}}"
+	  , "&lt;test.txt&gt;" },
+
+	// 12
+	{ "{{.#include.\"test.txt\"}}"
+	  , "<span>{copyright}</span>" },
+
+	// 13
+	{ "{{.#include(\"test.txt\")}}"
+	  , "<span>{copyright}</span>" },
+
+	// 14
+	{ "name = {{.name}}"
+	  , "name = Taro" },
+
+	// 15
+	{ "age = {{.age}}"
+	  , "age = 24" },
+
+	// 16
+	{ "{{.#raw.name}}"
+	  , "Taro" },
+
+	// 17
+	{ "{{.#raw(name)}}"
+	  , "Taro" },
+
+	// 18
+	{ "{{.`uname`}}"
+	  , "Linux" },
+
+	// 19
+	{ "{{.<test.txt>}}"
+	  , "<span>{copyright}</span>" },
+
+	// 20
+	{ "{{.$(SHELL)}}"
+	  , "/bin/bash" },
+
+	// 21
+	{ "{{.#define.hoge=fuga}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 22
+	{ "{{.#define.hoge fuga}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 23
+	{ "{{.#define.hoge  fuga}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 24
+	{ "{{.#define('hoge','fuga')}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 25
+	{ "{{.#define('hoge', 'fuga')}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 26
+	{ "{{.#define(\"hoge\",\"fuga\")}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 27
+	{ "{{.#define(\"hoge\", \"fuga\")}}{{.#put.hoge}}"
+	  , "fuga" },
+
+	// 28
+	{ "{{.#define.hoge=fuga}}{{.#put('hoge')}}"
+	  , "fuga" },
+
+	// 29
+	{ "{{.#define.hoge fuga}}{{.#put(\"hoge\")}}"
+	  , "fuga" },
+
+	// 30
+	{ "{{.#define.hoge fuga}}{{.#put(hoge)}}" // put(hoge) は間違い。put('hoge') が正しい。
+	  , "?hoge?" },
+
+	// 31
+	{ "{{.#define.hoge={{.'fuga'}}}}{{.#put.hoge}}"
+	  , "{{.'fuga'}}" },
+
+	// 32
+	{ "{{.#define.hoge {{.'{{.'piyo}}'}}}}{{.#put.hoge}}"
+	  , "{{.'{{.'piyo}}'}}" },
+
+	// 33
+	{ "({{.#if.1}}foo{{.#else}}bar{{.}})"
+	  , "(foo)" },
+
+	// 34
+	{ "({{.#if.0}}foo{{.#else}}bar{{.}})"
+	  , "(bar)" },
+
+	// 35
+	{ "({{.#if.1}}foo{{.#else}}bar{{.#end}})" // #end は冗長だけど正しい文法
+	  , "(foo)" },
+
+	// 36
+	{ "({{.#if.0}}foo{{.#else}}bar{{.#end}})"
+	  , "(bar)" },
+
+	// 37
+	{ "({{.#if.1}}foo{{.#elif.0}}bar{{.#else}}baz{{.}})"
+	  , "(foo)" },
+
+	// 38
+	{ "({{.#if.1}}foo{{.#elif.1}}bar{{.#else}}baz{{.}})"
+	  , "(foo)" },
+
+	// 39
+	{ "({{.#if.0}}foo{{.#elif.0}}bar{{.#else}}baz{{.}})"
+	  , "(baz)" },
+
+	// 40
+	{ "({{.#if.0}}foo{{.#elif.1}}bar{{.#else}}baz{{.}})"
+	  , "(bar)" },
+
 };
 static const int testcase_count = sizeof(testcases) / sizeof(testcases[0]);
 

@@ -401,19 +401,31 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 	char const *end = begin + source.size();
 	char const *ptr = begin;
 
-	std::vector<char> condition_stack; // すべてtrueなら条件分岐が真として処理する。格納される値は 0 か 1 のみ。
-	bool condition = true;
+	std::vector<unsigned char> condition_stack; // すべてtrueなら条件分岐が真として処理する。格納される値は 0 か 1 のみ。
+	unsigned char condition = 1;
+	enum {
+		COND_FALSE,
+		COND_TRUE,
+		COND_DONE,
+		COND_ELSE,
+	};
 
 	auto UpdateCondition = [&](){
-		condition = std::accumulate(condition_stack.begin(), condition_stack.end(), 0) == condition_stack.size();
+		condition = COND_TRUE;
+		for (char c : condition_stack) {
+			if (c == COND_FALSE || c == COND_DONE) {
+				condition = c;
+				break;
+			}
+		}
 	};
 	auto outc = [&](char c){
-		if (condition && comment_depth == 0) {
+		if (condition == COND_TRUE && comment_depth == 0) {
 			out.push_back(c);
 		}
 	};
 	auto outs = [&](std::string_view const &s){
-		if (condition && comment_depth == 0) {
+		if (condition == COND_TRUE && comment_depth == 0) {
 			append(&out, s);
 		}
 	};
@@ -428,6 +440,9 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 		}
 		return std::nullopt;
 	};
+
+	condition_stack.push_back(COND_TRUE);
+	UpdateCondition();
 
 	while (1) {
 		comment_depth = 0;
@@ -482,6 +497,8 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				Include,
 				If,
 				Ifn,
+				Elif,
+				Elifn,
 				Else,
 				End,
 			} directive = Directive::None;
@@ -508,6 +525,10 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 					directive = Directive::If;
 				} else if (s == "#ifn") {
 					directive = Directive::Ifn;
+				} else if (s == "#elif") {
+					directive = Directive::Elif;
+				} else if (s == "#elifn") {
+					directive = Directive::Elifn;
 				} else if (s == "#else") {
 					directive = Directive::Else;
 				} else if (s == "#end") {
@@ -612,8 +633,6 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				EatNL();
 				break;
 			case Directive::Put:
-				{
-#if 1
 				if (evaluator) {
 					std::vector<std::string> args;
 					for (size_t i = 0; i < values.size(); i++) {
@@ -626,38 +645,15 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 						break;
 					}
 				}
-				auto text = FindMacro(key);
-				if (text) {
-					outs(*text);
-					break;
-				}
 				{
-					fprintf(stderr, "undefined macro '%s'\n", key.data());
-					outs(key);
-				}
-				break;
-#else
-				std::string atext;
-				auto text = FindMacro(key);
-				if (text) {
-					atext = *text;
-				}
-				std::optional<std::string> t;
-				if (evaluator) {
-					std::vector<std::string> args;
-					for (size_t i = 0; i < values.size(); i++) {
-						args.emplace_back(values[i]);
+					auto text = FindMacro(key);
+					if (text) {
+						outs(*text);
+						break;
 					}
-					t = evaluator(key, atext, args);
 				}
-				if (t) {
-					std::string u = generate(*t, map);
-					outs(u);
-				} else {
-					fprintf(stderr, "undefined macro '%s'\n", value.data());
-				}
-#endif
-				}
+				fprintf(stderr, "undefined macro '%s'\n", key.data());
+				outs(key);
 				break;
 			case Directive::Include:
 				if (includer) {
@@ -678,20 +674,63 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				break;
 			case Directive::If: // {{.#if.foo}}
 				{
-					bool f = atoi(value.data()) != 0;
-					condition_stack.push_back(f);
+					auto v = atoi(value.data());
+					condition_stack.push_back(v != 0 ? COND_TRUE : COND_FALSE);
 					UpdateCondition();
 				}
 				break;
 			case Directive::Ifn: // {{.#ifn.foo}} // if not
 				{
-					bool f = atoi(value.data()) == 0;
-					condition_stack.push_back(f);
+					auto v = atoi(value.data());
+					condition_stack.push_back(v == 0 ? COND_TRUE : COND_FALSE);
 					UpdateCondition();
 				}
 				break;
+			case Directive::Elif: // {{.#elif.foo}}
+				if (condition_stack.size() < 2) {
+					fprintf(stderr, "elif without if\n");
+					break;
+				}
+				if (condition == COND_DONE) {
+					// skip
+				} else if (condition == COND_TRUE) {
+					condition_stack.back() = COND_DONE;
+				} else {
+					auto v = atoi(value.data());
+					condition_stack.back() = (v != 0 ? COND_TRUE : COND_FALSE);
+				}
+				UpdateCondition();
+				break;
+			case Directive::Elifn: // {{.#elifn.foo}}
+				if (condition_stack.size() < 2) {
+					fprintf(stderr, "elif without if\n");
+					break;
+				}
+				if (condition == COND_DONE) {
+					// skip
+				} else if (condition == COND_TRUE) {
+					condition_stack.back() = COND_DONE;
+				} else {
+					auto v = atoi(value.data());
+					condition_stack.back() = (v == 0 ? COND_TRUE : COND_FALSE);
+				}
+				UpdateCondition();
+				break;
 			case Directive::Else: // {{.#else}}
-				condition = !condition;
+				if (condition_stack.size() < 2) {
+					fprintf(stderr, "else without if\n");
+					break;
+				}
+				if (condition_stack.back() == COND_ELSE) {
+					fprintf(stderr, "else after else\n");
+					break;
+				}
+				if (condition == COND_FALSE) {
+					condition_stack.back() = COND_ELSE;
+				} else if (condition == COND_TRUE) {
+					condition_stack.back() = COND_DONE;
+				}
+				UpdateCondition();
 				break;
 			case Directive::End: // {{.#end}}
 				EatNL();
