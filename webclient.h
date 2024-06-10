@@ -12,6 +12,12 @@
 class WebContext;
 class WebClient;
 
+typedef void _in_addr;
+class HostNameResolver {
+public:
+	bool resolve(char const *name, _in_addr *out);
+};
+
 class WebClientHandler {
 protected:
 	void abort(std::string const &message = {});

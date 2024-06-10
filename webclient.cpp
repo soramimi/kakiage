@@ -1,6 +1,7 @@
 
 #include "webclient.h"
 #include <cstring>
+#include <algorithm>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -76,7 +77,7 @@ std::string_view trimmed(const std::string_view &s)
 	return s.substr(i, j - i);
 }
 
-int _stricmp(char const *s1, char const *s2)
+int x_stricmp(char const *s1, char const *s2)
 {
 #ifdef _WIN32
 	return ::stricmp(s1, s2);
@@ -85,7 +86,7 @@ int _stricmp(char const *s1, char const *s2)
 #endif
 }
 
-int _strnicmp(char const *s1, char const *s2, size_t n)
+int x_strnicmp(char const *s1, char const *s2, size_t n)
 {
 #ifdef _WIN32
 	return ::strnicmp(s1, s2, n);
@@ -96,26 +97,22 @@ int _strnicmp(char const *s1, char const *s2, size_t n)
 
 } // namespace
 
-class HostNameResolver {
-private:
+bool HostNameResolver::resolve(const char *name, _in_addr *out)
+{
+	struct hostent *he = nullptr;
+#if defined(_WIN32) || defined(__APPLE__)
+	he = ::gethostbyname(name);
+#else
+	int err = 0;
 	char buf[2048];
 	struct hostent tmp;
-public:
-	bool gethostbyname(char const *name, in_addr *out)
-	{
-		struct hostent *he = nullptr;
-#if defined(_WIN32) || defined(__APPLE__)
-		he = ::gethostbyname(name);
-#else
-		int err = 0;
-		gethostbyname_r(name, &tmp, buf, sizeof(buf), &he, &err);
+	gethostbyname_r(name, &tmp, buf, sizeof(buf), &he, &err);
 #endif
-		if (!he) return false;
+	if (!he) return false;
 
-		memcpy(out, he->h_addr, he->h_length);
-		return true;
-	}
-};
+	memcpy(out, he->h_addr, he->h_length);
+	return true;
+}
 
 struct WebContext::Private {
 	WebClient::HttpVersion http_version = WebClient::HTTP_1_0;
@@ -490,7 +487,7 @@ static char *stristr(char *str1, char const *str2)
 	size_t len1 = strlen(str1);
 	size_t len2 = strlen(str2);
 	for (size_t i = 0; i + len2 <= len1; i++) {
-		if (_strnicmp(str1 + i, str2, len2) == 0) {
+		if (x_strnicmp(str1 + i, str2, len2) == 0) {
 			return str1 + i;
 		}
 	}
@@ -524,7 +521,7 @@ public:
 					char *p = strchr(begin, ':');
 					if (p && *p == ':') {
 						*p++ = 0;
-						auto IS = [&](char const *name){ return _stricmp(begin, name) == 0; };
+						auto IS = [&](char const *name){ return x_stricmp(begin, name) == 0; };
 						if (IS("content-length")) {
 							content_length = strtol(p, nullptr, 10);
 						} else if (IS("connection")) {
@@ -623,7 +620,7 @@ static int inet_connect(std::string const &hostname, int port)
 	memset((char *)&server, 0, sizeof(server));
 	server.sin_family = AF_INET;
 
-	if (HostNameResolver().gethostbyname(hostname.data(), &server.sin_addr)) {
+	if (HostNameResolver().resolve(hostname.data(), &server.sin_addr)) {
 		server.sin_port = htons(port);
 		socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
 		if (sock != INVALID_SOCKET) {
@@ -1058,7 +1055,7 @@ std::string WebClient::header_value(std::vector<std::string> const *header, std:
 		char const *end = begin + line.size();
 		char const *colon = strchr(begin, ':');
 		if (colon) {
-			if (_strnicmp(begin, name.c_str(), name.size()) == 0) {
+			if (x_strnicmp(begin, name.c_str(), name.size()) == 0) {
 				char const *ptr = colon + 1;
 				while (ptr < end && isspace(*ptr & 0xff)) ptr++;
 				return std::string(ptr, end);

@@ -3,7 +3,6 @@
 #include <map>
 #include <stdio.h>
 #include <cstring>
-#include <string_view>
 #include <optional>
 #include "webclient.h"
 
@@ -209,7 +208,9 @@ struct TestCase {
 };
 
 TestCase testcases[] = {
+#if 0
 
+#else
 	// 0
 	{ "(&&.{};)"
 	  , "(&.{})" },
@@ -228,11 +229,11 @@ TestCase testcases[] = {
 
 	// 4
 	{ "{{.#put.inet_checkip}}"
-	  , "14.3.142.77" },
+	  , "14.3.147.194" },
 
 	// 5
 	{ "{{.#put('inet_checkip'}}"
-	  , "14.3.142.77" },
+	  , "14.3.147.194" },
 
 	// 6
 	{ "{{.#put.inet_resolve(\"a.root-servers.net\")}}"
@@ -373,7 +374,24 @@ TestCase testcases[] = {
 	// 40
 	{ "({{.#if.0}}foo{{.#elif.1}}bar{{.#else}}baz{{.}})"
 	  , "(bar)" },
+	
+	// 41
+	{ "ab{{.;cdefghijkl}}mn"
+	  , "abmn" },
+	
+	// 42	
+	{ "ab{{.;cd}}ef{{.;gh}}"
+	 , "abef" },
 
+	// 43
+	{ "{{.;ab}}cd{{.;ef}}gh"
+	 , "cdgh" },
+	
+	// 44
+	{ "ab{{.;cd{{ef}}gh{{.ij}}kl}}mn"
+	 , "abmn" },
+	
+#endif
 };
 static const int testcase_count = sizeof(testcases) / sizeof(testcases[0]);
 

@@ -2,7 +2,6 @@
 #include "kakiage.h"
 #include "urlencode.h"
 #include <cstring>
-#include <numeric>
 #include <optional>
 #include <vector>
 #include "strformat.h"
@@ -445,7 +444,6 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 	UpdateCondition();
 
 	while (1) {
-		comment_depth = 0;
 		int c = 0;
 		if (ptr < end) {
 			c = (unsigned char)*ptr;
@@ -472,6 +470,17 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				return;
 			}
 		};
+		if (comment_depth > 0) {
+			if (c == '{' && ptr + 1 < end && ptr[1] == '{') {
+				comment_depth++;
+				ptr += 2;
+				continue;
+			} else if (c == '}' && ptr + 1 < end && ptr[1] == '}') {
+				comment_depth--;
+				ptr += 2;
+				continue;
+			}
+		}
 		if (c == '{' && ptr + 4 < end && ptr[1] == '{' && ptr[2] == '.') {
 			ptr += 3;
 			if (ptr[0] == '}' && ptr[1] == '}') {
@@ -485,6 +494,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 			if (*ptr == ';') { // {{.;comment}}
 				comment_depth = 1;
 				ptr++;
+				continue;
 			}
 
 			enum class Directive {

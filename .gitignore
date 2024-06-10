@@ -2,3 +2,4 @@ kakiage
 out/
 *.user
 *.o
+build/
