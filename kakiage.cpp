@@ -160,6 +160,7 @@ std::optional<std::string> run(std::string const &command)
 	UnixProcess proc;
 #endif
 	proc.start(command, false);
+	proc.closeInput(true);
 	if (proc.wait() == 0) {
 		return proc.outstring();
 	}
