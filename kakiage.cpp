@@ -250,9 +250,9 @@ static void parse_string_raw(char const *begin, char const *end, char const **ne
 std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char const *end, char const *sep, char const *stop, std::map<std::string, std::string> const *map, char const **next)
 {
 	*next = end;
-
+	
 	std::vector<std::vector<char>> out;
-
+	
 	bool convert = true;
 	auto Convert = [&](){
 		if (convert) {
@@ -275,7 +275,7 @@ std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char con
 			convert = true;
 		}
 	};
-
+	
 	out.push_back({});
 	out.back().reserve(256);
 	char const *right = begin;
@@ -312,7 +312,7 @@ std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char con
 				e = ']';
 				fprintf(stderr, "square bracket is reserved\n");
 			}
-
+			
 			std::string s = string_literal(right, end, e, &right);
 			if (right < end) {
 				right++;
@@ -390,16 +390,16 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 {
 	std::map<std::string, std::string> macro;
 	defines.push_back(&macro);
-
+	
 	std::vector<char> out;
 	out.reserve(4096);
-
+	
 	int comment_depth = 0;
-
+	
 	char const *begin = source.data();
 	char const *end = begin + source.size();
 	char const *ptr = begin;
-
+	
 	std::vector<unsigned char> condition_stack; // すべてtrueなら条件分岐が真として処理する。格納される値は 0 か 1 のみ。
 	unsigned char condition = 1;
 	enum {
@@ -408,7 +408,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 		COND_DONE,
 		COND_ELSE,
 	};
-
+	
 	auto UpdateCondition = [&](){
 		condition = COND_TRUE;
 		for (char c : condition_stack) {
@@ -439,10 +439,10 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 		}
 		return std::nullopt;
 	};
-
+	
 	condition_stack.push_back(COND_TRUE);
 	UpdateCondition();
-
+	
 	while (1) {
 		int c = 0;
 		if (ptr < end) {
@@ -490,13 +490,13 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				END();
 				continue;
 			}
-
+			
 			if (*ptr == ';') { // {{.;comment}}
 				comment_depth = 1;
 				ptr++;
 				continue;
 			}
-
+			
 			enum class Directive {
 				None,
 				Raw,
@@ -512,7 +512,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				Else,
 				End,
 			} directive = Directive::None;
-
+			
 			if (*ptr == '#') {
 				size_t i = 1;
 				while (ptr + i < end && issym(ptr[i])) {
@@ -548,7 +548,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				}
 				ptr += s.size();
 			}
-
+			
 			auto ParseSymbol = [&](){
 				size_t i = 0;
 				while (ptr + i < end && ((i == 0) ? issymf(ptr[i]) : issym(ptr[i]))) {
@@ -558,12 +558,12 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				ptr += i;
 				return s;
 			};
-
+			
 			std::string key;
 			std::string value;
 			std::vector<std::string> values;
 			std::vector<std::vector<char>> vec;
-
+			
 			if (directive != Directive::None) {
 				if (ptr < end) {
 					bool keyflag = false;
@@ -612,11 +612,11 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 					ptr++;
 				}
 			}
-
+			
 			if (!values.empty()) {
 				value = values[0];
 			}
-
+			
 			switch (directive) {
 			case Directive::HTML: // {{.#html.foo}}
 				outs(html_encode(value, true)); // output html encoded value
@@ -643,20 +643,20 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				EatNL();
 				break;
 			case Directive::Put:
-				if (evaluator) {
-					std::vector<std::string> args;
-					for (size_t i = 0; i < values.size(); i++) {
-						args.emplace_back(values[i]);
-					}
-					auto t = evaluator(key, {}, args);
-					if (t) {
-						std::string u = generate(*t, map);
-						outs(u);
-						break;
-					}
-				}
 				{
 					auto text = FindMacro(key);
+					if (evaluator) {
+						std::vector<std::string> args;
+						for (size_t i = 0; i < values.size(); i++) {
+							args.emplace_back(values[i]);
+						}
+						auto t = evaluator(key, text ? *text : std::string(), args);
+						if (t) {
+							std::string u = generate(*t, map);
+							outs(u);
+							break;
+						}
+					}
 					if (text) {
 						outs(*text);
 						break;
@@ -778,8 +778,8 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 			ptr++;
 		}
 	}
-
+	
 	defines.pop_back();
-
+	
 	return (std::string)to_string(out);
 }
