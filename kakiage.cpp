@@ -512,6 +512,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				Elifn,
 				Else,
 				End,
+				For,
 			} directive = Directive::None;
 			
 			if (*ptr == '#') {
@@ -544,6 +545,8 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 					directive = Directive::Else;
 				} else if (s == "#end") {
 					directive = Directive::End;
+				} else if (s == "#for") {
+					directive = Directive::For;
 				} else {
 					fprintf(stderr, "unknown directive '%s'\n", s.data());
 				}
@@ -568,7 +571,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 			if (directive != Directive::None) {
 				if (ptr < end) {
 					bool keyflag = false;
-					if (directive == Directive::Define || directive == Directive::Put) {
+					if (directive == Directive::Define || directive == Directive::Put || directive == Directive::For) {
 						keyflag = true;
 						if (*ptr == '.') {
 							ptr++;
@@ -582,7 +585,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 							if (ptr < end && *ptr == ')') {
 								ptr++;
 							}
-						} else if (directive == Directive::Define) {
+						} else if (directive == Directive::Define || directive == Directive::For) {
 							if (*ptr == '=' || isspace((unsigned char)*ptr)) {
 								ptr++;
 								std::vector<char> v;
@@ -665,6 +668,19 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				}
 				fprintf(stderr, "undefined macro '%s'\n", key.data());
 				outs(key);
+				break;
+			case Directive::For:
+				if (evaluator) {
+					std::vector<std::string> args;
+					for (size_t i = 0; i < values.size(); i++) {
+						args.emplace_back(values[i]);
+					}
+					auto t = evaluator(key, value, args);
+					if (t) {
+						outs(*t);
+					}
+				}
+				EatNL();
 				break;
 			case Directive::Include:
 				if (includer) {
