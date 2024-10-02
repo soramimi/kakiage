@@ -629,7 +629,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				outs(value); // output raw value
 				break;
 			case Directive::URL: // {{.#url.foo}}
-				outs(url_encode(value, true)); // output url encoded value
+				outs(url_encode(value)); // output url encoded value
 				break;
 			case Directive::Define:
 				if (!key.empty()) {

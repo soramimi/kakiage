@@ -399,9 +399,12 @@ kakiage st;
 
 int testmain()
 {
+	char const *in_file = "../test.in";
+	char const *ka_file = "../test.ka";
+
 	std::string input_text;
 	std::map<std::string, std::string> map;
-	auto file = readfile("test.in");
+	auto file = readfile(in_file);
 	if (!file) {
 		fprintf(stderr, "Failed to open input file: test.in\n");
 		return 1;
@@ -409,7 +412,7 @@ int testmain()
 
 	input_text = *file;
 	map.clear();
-	parseConfigFile("test.ka", &map);
+	parseConfigFile(ka_file, &map);
 
 	int passed = 0;
 	int failed = 0;

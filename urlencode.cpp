@@ -13,12 +13,12 @@
 
 namespace {
 
-inline void append(std::vector<char> *out, char c)
+inline void vecprint(std::vector<char> *out, char c)
 {
 	out->push_back(c);
 }
 
-inline void append(std::vector<char> *out, char const *s)
+inline void vecprint(std::vector<char> *out, char const *s)
 {
 	out->insert(out->end(), s, s + strlen(s));
 }
@@ -33,28 +33,30 @@ inline std::string_view to_string(std::vector<char> const &vec)
 
 } // namespace
 
-static void url_encode_(char const *ptr, char const *end, std::vector<char> *out, bool utf8lazy)
+static void url_encode_(char const *ptr, char const *end, std::vector<char> *out, bool encodeslash, bool utf8through)
 {
 	while (ptr < end) {
 		int c = (unsigned char)*ptr;
 		ptr++;
 		if (isalnum(c) || strchr("_.-~", c)) {
-			append(out, c);
-		} else if (utf8lazy && c >= 0x80) {
-			append(out, c);
+			vecprint(out, c);
+		} else if (utf8through && c >= 0x80) {
+			vecprint(out, c);
+		} else if (c == '/' && !encodeslash) {
+			vecprint(out, c);
 		} else if (c == ' ') {
-			append(out, '+');
+			vecprint(out, '+');
 		} else {
 			char tmp[10];
 			sprintf(tmp, "%%%02X", c);
-			append(out, tmp[0]);
-			append(out, tmp[1]);
-			append(out, tmp[2]);
+			vecprint(out, tmp[0]);
+			vecprint(out, tmp[1]);
+			vecprint(out, tmp[2]);
 		}
 	}
 }
 
-std::string url_encode(char const *str, char const *end, bool utf8lazy)
+std::string url_encode(char const *str, char const *end, bool encodeslash, bool utf8through)
 {
 	if (!str) {
 		return std::string();
@@ -63,24 +65,24 @@ std::string url_encode(char const *str, char const *end, bool utf8lazy)
 	std::vector<char> out;
 	out.reserve(end - str + 10);
 
-	url_encode_(str, end, &out, utf8lazy);
+	url_encode_(str, end, &out, encodeslash, utf8through);
 
 	return (std::string)to_string(out);
 }
 
-std::string url_encode(char const *str, size_t len, bool utf8lazy)
+std::string url_encode(char const *str, size_t len, bool encodeslash, bool utf8through)
 {
-	return url_encode(str, str + len, utf8lazy);
+	return url_encode(str, str + len, encodeslash, utf8through);
 }
 
-std::string url_encode(char const *str, bool utf8lazy)
+std::string url_encode(char const *str, bool utf8through)
 {
-	return url_encode(str, strlen(str), utf8lazy);
+	return url_encode(str, strlen(str), utf8through);
 }
 
-std::string url_encode(std::string const &str, bool utf8lazy)
+std::string url_encode(std::string_view const &str, bool encodeslash, bool utf8through)
 {
-	char const *begin = str.c_str();
+	char const *begin = str.data();
 	char const *end = begin + str.size();
 	char const *ptr = begin;
 
@@ -88,20 +90,22 @@ std::string url_encode(std::string const &str, bool utf8lazy)
 		int c = (unsigned char)*ptr;
 		if (isalnum(c) || strchr("_.-~", c)) {
 			// thru
+		} else if (c == '/' && !encodeslash) {
+			// thru
 		} else {
 			break;
 		}
 		ptr++;
 	}
 	if (ptr == end) {
-		return str;
+		return std::string(str);
 	}
 
 	std::vector<char> out;
 	out.reserve(str.size() + 10);
 
 	out.insert(out.end(), begin, ptr);
-	url_encode_(ptr, end, &out, utf8lazy);
+	url_encode_(ptr, end, &out, encodeslash, utf8through);
 
 	return (std::string)to_string(out);
 }
@@ -121,7 +125,7 @@ static void url_decode_(char const *ptr, char const *end, std::vector<char> *out
 			c = strtol(tmp, nullptr, 16);
 			ptr += 2;
 		}
-		append(out, c);
+		vecprint(out, c);
 	}
 }
 
@@ -149,9 +153,9 @@ std::string url_decode(char const *str)
 	return url_decode(str, strlen(str));
 }
 
-std::string url_decode(std::string const &str)
+std::string url_decode(std::string_view const &str)
 {
-	char const *begin = str.c_str();
+	char const *begin = str.data();
 	char const *end = begin + str.size();
 	char const *ptr = begin;
 
@@ -163,7 +167,7 @@ std::string url_decode(std::string const &str)
 		ptr++;
 	}
 	if (ptr == end) {
-		return str;
+		return std::string(str);
 	}
 
 	std::vector<char> out;
