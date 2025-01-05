@@ -1,3 +1,5 @@
+QMAKE_PROJECT_DEPTH = 0
+
 TARGET = kakiage
 TEMPLATE = app
 CONFIG += console c++17
@@ -13,8 +15,8 @@ macx:INCLUDEPATH += /usr/local/Cellar/openssl@3/3.1.1/include
 macx:LIBS += /usr/local/Cellar/openssl@3/3.1.1/lib/libssl.a /usr/local/Cellar/openssl@3/3.1.1/lib/libcrypto.a
 
 win32:msvc {
-	INCLUDEPATH += "C:\Qt\Tools\OpenSSLv3\Win_x64\include"
-	LIBS += "-LC:\Qt\Tools\OpenSSLv3\Win_x64\lib"
+	INCLUDEPATH += "C:\openssl-ci\OpenSSL\include"
+	LIBS += "-LC:\openssl-ci\OpenSSL\lib"
 	LIBS += -llibcrypto -llibssl
 }
 
