@@ -504,7 +504,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 				URL,
 				HTML,
 				Put,
-				Define,
+				Set,
 				Include,
 				If,
 				Ifn,
@@ -529,8 +529,8 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 					directive = Directive::URL;
 				} else if (s == "#put") {
 					directive = Directive::Put;
-				} else if (s == "#define") {
-					directive = Directive::Define;
+				} else if (s == "#set") {
+					directive = Directive::Set;
 				} else if (s == "#include") {
 					directive = Directive::Include;
 				} else if (s == "#if") {
@@ -571,7 +571,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 			if (directive != Directive::None) {
 				if (ptr < end) {
 					bool keyflag = false;
-					if (directive == Directive::Define || directive == Directive::Put || directive == Directive::For) {
+					if (directive == Directive::Set || directive == Directive::Put || directive == Directive::For) {
 						keyflag = true;
 						if (*ptr == '.') {
 							ptr++;
@@ -585,7 +585,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 							if (ptr < end && *ptr == ')') {
 								ptr++;
 							}
-						} else if (directive == Directive::Define || directive == Directive::For) {
+						} else if (directive == Directive::Set || directive == Directive::For) {
 							if (*ptr == '=' || isspace((unsigned char)*ptr)) {
 								ptr++;
 								std::vector<char> v;
@@ -631,7 +631,7 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 			case Directive::URL: // {{.#url.foo}}
 				outs(url_encode(value)); // output url encoded value
 				break;
-			case Directive::Define:
+			case Directive::Set:
 				if (!key.empty()) {
 					if (value.empty()) {
 						auto it = macro.find(key);

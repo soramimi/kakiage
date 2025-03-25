@@ -147,7 +147,6 @@ std::optional<std::string> readfile(char const *path)
 
 void parseConfigFile(char const *path, std::map<std::string, std::string> *map)
 {
-	map->clear();
 	auto rules = readfile(path);
 	if (!rules) {
 		fprintf(stderr, "Failed to open definition file: %s\n", path);
@@ -296,51 +295,51 @@ TestCase testcases[] = {
 	  , "/bin/bash" },
 
 	// 21
-	{ "{{.#define.hoge=fuga}}{{.#put.hoge}}"
+	{ "{{.#set.hoge=fuga}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 22
-	{ "{{.#define.hoge fuga}}{{.#put.hoge}}"
+	{ "{{.#set.hoge fuga}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 23
-	{ "{{.#define.hoge  fuga}}{{.#put.hoge}}"
+	{ "{{.#set.hoge  fuga}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 24
-	{ "{{.#define('hoge','fuga')}}{{.#put.hoge}}"
+	{ "{{.#set('hoge','fuga')}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 25
-	{ "{{.#define('hoge', 'fuga')}}{{.#put.hoge}}"
+	{ "{{.#set('hoge', 'fuga')}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 26
-	{ "{{.#define(\"hoge\",\"fuga\")}}{{.#put.hoge}}"
+	{ "{{.#set(\"hoge\",\"fuga\")}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 27
-	{ "{{.#define(\"hoge\", \"fuga\")}}{{.#put.hoge}}"
+	{ "{{.#set(\"hoge\", \"fuga\")}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 28
-	{ "{{.#define.hoge=fuga}}{{.#put('hoge')}}"
+	{ "{{.#set.hoge=fuga}}{{.#put('hoge')}}"
 	  , "fuga" },
 
 	// 29
-	{ "{{.#define.hoge fuga}}{{.#put(\"hoge\")}}"
+	{ "{{.#set.hoge fuga}}{{.#put(\"hoge\")}}"
 	  , "fuga" },
 
 	// 30
-	{ "{{.#define.hoge fuga}}{{.#put(hoge)}}" // put(hoge) は間違い。put('hoge') が正しい。
+	{ "{{.#set.hoge fuga}}{{.#put(hoge)}}" // put(hoge) は間違い。put('hoge') が正しい。
 	  , "?hoge?" },
 
 	// 31
-	{ "{{.#define.hoge={{.'fuga'}}}}{{.#put.hoge}}"
+	{ "{{.#set.hoge={{.'fuga'}}}}{{.#put.hoge}}"
 	  , "{{.'fuga'}}" },
 
 	// 32
-	{ "{{.#define.hoge {{.'{{.'piyo}}'}}}}{{.#put.hoge}}"
+	{ "{{.#set.hoge {{.'{{.'piyo}}'}}}}{{.#put.hoge}}"
 	  , "{{.'{{.'piyo}}'}}" },
 
 	// 33
