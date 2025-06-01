@@ -357,13 +357,13 @@ std::vector<std::vector<char>> kakiage::parse_string(char const *begin, char con
 					fprintf(stderr, "environment variable '%s' not found\n", v.data());
 				}
 			} else if (c == '%') { // %(format, ...)
-				strformat f;
+				strf f;
 				for (size_t i = 0; i < list.size(); i++) {
 					std::string a(to_string(list[i]));
 					if (i == 0) {
 						f.append(a);
 					} else {
-						f.a(a);
+						f.arg(a);
 					}
 				}
 				append(&out.back(), f.str());
