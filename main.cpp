@@ -295,51 +295,51 @@ TestCase testcases[] = {
 	  , "/bin/bash" },
 
 	// 21
-	{ "{{.#set.hoge=fuga}}{{.#put.hoge}}"
+	{ "{{.#define.hoge=fuga}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 22
-	{ "{{.#set.hoge fuga}}{{.#put.hoge}}"
+	{ "{{.#define.hoge fuga}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 23
-	{ "{{.#set.hoge  fuga}}{{.#put.hoge}}"
+	{ "{{.#define.hoge  fuga}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 24
-	{ "{{.#set('hoge','fuga')}}{{.#put.hoge}}"
+	{ "{{.#define('hoge','fuga')}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 25
-	{ "{{.#set('hoge', 'fuga')}}{{.#put.hoge}}"
+	{ "{{.#define('hoge', 'fuga')}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 26
-	{ "{{.#set(\"hoge\",\"fuga\")}}{{.#put.hoge}}"
+	{ "{{.#define(\"hoge\",\"fuga\")}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 27
-	{ "{{.#set(\"hoge\", \"fuga\")}}{{.#put.hoge}}"
+	{ "{{.#define(\"hoge\", \"fuga\")}}{{.#put.hoge}}"
 	  , "fuga" },
 
 	// 28
-	{ "{{.#set.hoge=fuga}}{{.#put('hoge')}}"
+	{ "{{.#define.hoge=fuga}}{{.#put('hoge')}}"
 	  , "fuga" },
 
 	// 29
-	{ "{{.#set.hoge fuga}}{{.#put(\"hoge\")}}"
+	{ "{{.#define.hoge fuga}}{{.#put(\"hoge\")}}"
 	  , "fuga" },
 
 	// 30
-	{ "{{.#set.hoge fuga}}{{.#put(hoge)}}" // put(hoge) は間違い。put('hoge') が正しい。
+	{ "{{.#define.hoge fuga}}{{.#put(hoge)}}" // put(hoge) は間違い。put('hoge') が正しい。
 	  , "?hoge?" },
 
 	// 31
-	{ "{{.#set.hoge={{.'fuga'}}}}{{.#put.hoge}}"
+	{ "{{.#define.hoge={{.'fuga'}}}}{{.#put.hoge}}"
 	  , "{{.'fuga'}}" },
 
 	// 32
-	{ "{{.#set.hoge {{.'{{.'piyo}}'}}}}{{.#put.hoge}}"
+	{ "{{.#define.hoge {{.'{{.'piyo}}'}}}}{{.#put.hoge}}"
 	  , "{{.'{{.'piyo}}'}}" },
 
 	// 33

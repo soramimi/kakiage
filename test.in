@@ -16,7 +16,7 @@ age = {{.age}}
 {{.<test.txt>}}
 {{.$(SHELL)}}
 {{.%("format: %s", <test.txt>)}}
-{{.#set.a.$(SHELL)}}
+{{.#define.a.$(SHELL)}}
 {{.#put("a")}}
 {{.#put.a}}
 {{.%("my shell is %s", $(SHELL))}}
