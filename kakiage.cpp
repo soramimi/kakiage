@@ -585,13 +585,13 @@ std::string kakiage::generate(const std::string &source, const std::map<std::str
 							if (ptr < end && *ptr == ')') {
 								ptr++;
 							}
-						} else if (directive == Directive::Define || directive == Directive::For) {
-							if (*ptr == '=' || isspace((unsigned char)*ptr)) {
-								ptr++;
-								std::vector<char> v;
-								parse_string_raw(ptr, end, &ptr, &v);
-								vec.push_back(v);
-							}
+						// } else if (directive == Directive::Define || directive == Directive::For) {
+						// 	if (*ptr == '.' || *ptr == '=' || isspace((unsigned char)*ptr)) {
+						// 		ptr++;
+						// 		std::vector<char> v;
+						// 		parse_string_raw(ptr, end, &ptr, &v);
+						// 		vec.push_back(v);
+						// 	}
 						} else if (*ptr == '.') {
 							ptr++;
 							vec = parse_string(ptr, end, nullptr, "}", &map, &ptr);
