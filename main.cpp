@@ -228,11 +228,11 @@ TestCase testcases[] = {
 
 	// 4
 	{ "{{.#put.inet_checkip}}"
-	  , "14.3.147.194" },
+	  , "138.64.87.38" },
 
 	// 5
 	{ "{{.#put('inet_checkip'}}"
-	  , "14.3.147.194" },
+	  , "138.64.87.38" },
 
 	// 6
 	{ "{{.#put.inet_resolve(\"a.root-servers.net\")}}"

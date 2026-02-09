@@ -2,10 +2,6 @@
 {{.#url("<test.txt>")}}
 {{.#html(<test.txt>)}}
 {{.#html("<test.txt>")}}
-{{.#put.inet_resolve("home.soramimi.jp")}}
-{{.#put.inet_checkip}}
-{{.#put("inet_resolve", "home.soramimi.jp")}}
-{{.#put("inet_checkip"}}
 {{.#include."test.txt"}}
 {{.#include("test.txt")}}
 name = {{.name}}
